@@ -160,10 +160,10 @@ update
 	{
 		// Weapons.
 
-		ulong weaponAddress = current.WeaponInventory[current.WeaponCount];
+		ulong weaponAddress = memory.ReadValue<ulong>((IntPtr)(current.WeaponInventory + (ulong)(0x08 * (current.WeaponCount - 1))));
 		string weaponString = vars.getFNameToString(weaponAddress);
 
-		string statsString = "Stats:\n	Fire Rate: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["fireRate"])).ToString() + "\n	Automatic: " + memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["isAuto"])).ToString() + "\n	Ammo Max: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["ammoMax"])).ToString() + "\n	Distance Max: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["distanceMax"])).ToString() + "\nInv Ammo Max: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["invAmmoMax"])).ToString() + "\n	Damage: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["damage"])).ToString() + "\n	Pellet Num: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["pelletNum"])).ToString() + "\n	Shoots Multiple Pellets: " + memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["shootMultiplePellets"])).ToString();
+		string statsString = "Stats:\n	Fire Rate: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["fireRate"])).ToString() + "\n	Automatic: " + memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["isAuto"])).ToString() + "\n	Ammo Max: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["ammoMax"])).ToString() + "\n	Distance Max: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["distanceMax"])).ToString() + "\n	Inv Ammo Max: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["invAmmoMax"])).ToString() + "\n	Damage: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["damage"])).ToString() + "\n	Pellet Num: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["pelletNum"])).ToString() + "\n	Shoots Multiple Pellets: " + memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["shootMultiplePellets"])).ToString();
 
 		print(weaponAddress.ToString("X") + ": WEAPON\nPlayer picked up " + weaponString + "\n" + statsString);
 	}
