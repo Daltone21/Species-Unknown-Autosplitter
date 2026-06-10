@@ -6,7 +6,7 @@
 	By daltone_21 on Discord.
 
 	Todo:
-		- Add splitting support for enemy phase changes *
+		- Add splitting support for enemy phase changes
 		- Add splitting support for terminals
 */
 
