@@ -18,6 +18,8 @@ state("SpeciesUnknown-Win64-Shipping")
 	//ulong Character:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300;
 	ulong CharacterInteractingActor:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xC28;
 	ulong CharacterFocusedWidget:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xC30, 0x7D8;
+	ulong WeaponInventory:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xC48;
+	uint WeaponCount:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xC50;
 	
 	//uint MissionTimerSec:	0x08E41410, 0x1B0, 0x46C;
 	ulong GameManager:	0x08E41410, 0x1B0, 0x350;
@@ -80,6 +82,19 @@ init
 		{"isComplete",	0x19},
 		{"isCancel",	0x1A},
 	};
+	
+	vars.weaponStructDict = new Dictionary<string, uint>
+	{
+		{"fireRate",				0x478},
+		{"reloadAnim",				0x4D8},
+		{"isAuto",					0x523},
+		{"ammoMax",					0x528},
+		{"distanceMax",				0x548},
+		{"invAmmoMax",				0x988},
+		{"damage",					0x998},
+		{"pelletNum",				0xA2C},
+		{"shootMultiplePellets",	0xA30},
+	};
 
 	// Function declarations.
 
@@ -132,7 +147,38 @@ update
 
 	if (current.Monster != old.Monster && current.Monster != 0)
 	{
-		print("Monster " + current.MonsterEnum.ToString() + ":\n" + vars.getFNameToString(current.Monster));
+		// Monster.
+
+		ulong monsterAddress = current.Monster;
+		string monsterString = vars.getFNameToString(monsterAddress);
+		string monsterEnumString = current.MonsterEnum.ToString();
+
+		print(monsterAddress.ToString("X") + ": MONSTER\nMonster is " + monsterString + " (Enum " + monsterEnumString + ")");
+	}
+	
+	if (current.WeaponCount > old.WeaponCount)
+	{
+		// Weapons.
+
+		ulong weaponAddress = current.WeaponInventory[current.WeaponCount];
+		string weaponString = vars.getFNameToString(weaponAddress);
+
+	vars.weaponStructDict = new Dictionary<string, ulong>
+	{
+		{"fireRate",				0x478},
+		{"reloadAnim",				0x4D8},
+		{"isAuto",					0x523},
+		{"ammoMax",					0x528},
+		{"distanceMax",				0x548},
+		{"invAmmoMax",				0x988},
+		{"damage",					0x998},
+		{"pelletNum",				0xA2C},
+		{"shootMultiplePellets",	0xA30},
+	};
+
+		string statsString = "Stats:\n	Fire Rate: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["fireRate"])).ToString() + "\n	Automatic: " + memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["isAuto"])).ToString() + "\n	Ammo Max: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["ammoMax"])).ToString() + "\n	Distance Max: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["distanceMax"])).ToString() + "\nInv Ammo Max: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["invAmmoMax"])).ToString() + "\n	Damage: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["damage"])).ToString() + "\n	Pellet Num: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["pelletNum"])).ToString() + "\n	Shoots Multiple Pellets: " + memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["shootMultiplePellets"])).ToString();
+
+		print(weaponAddress.ToString("X") + ": WEAPON\nPlayer picked up " + weaponString + "\n" + statsString);
 	}
 }
 
