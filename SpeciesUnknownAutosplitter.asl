@@ -7,7 +7,7 @@
 
 	Todo:
 		- Add splitting support for enemy phase changes
-		- Add splitting support for terminals
+		- Fix splitting support for reactor and GAZ terminals
 */
 
 state("SpeciesUnknown-Win64-Shipping")
@@ -53,7 +53,7 @@ startup
 	settings.CurrentDefaultParent = "split";
 	settings.Add("split_CompleteAnyObjective", true, "Complete Any Objective");
 	settings.Add("split_CompleteFinalObjective", true, "Complete Final Objective");
-	settings.Add("split_ChangeMonsterPhase", true, "Change Monster Phase");
+	settings.Add("split_CompleteSectionGoal", true, "Complete Section Goal (Keypasses, Pipes, Airlock, etc.)");
 	
 	settings.CurrentDefaultParent = null;
 
@@ -69,6 +69,10 @@ startup
 init
 {
 	print("Game Detected!\nGEngine Address: " + current.GEngine.ToString("X") + "\nUWorld Address: " + current.UWorld.ToString("X"));
+	
+	// Certain variables.
+
+	vars.completedSectionGoals = new List<string>();
 
 	// Defined data structures and offsets.
 
@@ -232,6 +236,7 @@ onStart
 {
 	// Global variables used in code. Here for reference and resetting at the start of a run.
 	vars.indexOfLastCompletedObjective = -1;
+	vars.completedSectionGoals.Clear();
 }
 
 reset
@@ -270,11 +275,59 @@ split
 		}
 	}
 
-	if (settings["split_ChangeMonsterPhase"])
+	if (settings["split_CompleteSectionGoal"])
 	{
-		if (current.MonsterHealth > old.MonsterHealth)
+		string interactingFNameString = "";
+		bool sectionComplete = false;
+
+		if (current.CharacterFocusedWidget != 0)
 		{
-			return true;
+			interactingFNameString = vars.getFNameToString(current.CharacterFocusedWidget);
+		}
+		else if (current.CharacterInteractingActor != 0)
+		{
+			interactingFNameString = vars.getFNameToString(current.CharacterInteractingActor);
+		}
+
+		if (!vars.completedSectionGoals.Contains(interactingFNameString))
+		{
+			ulong widget = current.CharacterFocusedWidget;
+			ulong actor = current.CharacterInteractingActor;
+
+			switch (interactingFNameString)
+			{
+				default:
+				{
+					break;
+				}
+				case "BP_ConsoleKeypass_C":
+				{
+					int keypassMax = memory.ReadValue<int>((IntPtr)(actor + 0x4B8));
+					int keypasses = memory.ReadValue<int>((IntPtr)(actor + 0x4BC));
+					sectionComplete = (keypasses >= keypassMax);
+					break;
+				}
+				case "UMG_Reactor_REFACT_C":
+				{
+					IntPtr terminal = memory.ReadValue<IntPtr>((IntPtr)(widget + 0x460));
+					bool storeOpened = memory.ReadValue<bool>(terminal + 0x4A8);
+					sectionComplete = storeOpened;
+					break;
+				}
+				case "UMG_GAZ_REFACT_C":
+				{
+					IntPtr terminal = memory.ReadValue<IntPtr>((IntPtr)(widget + 0x478));
+					bool storeOpened = memory.ReadValue<bool>(terminal + 0x488);
+					sectionComplete = storeOpened;
+					break;
+				}
+			}
+
+			if (sectionComplete)
+			{
+				vars.completedSectionGoals.Add(interactingFNameString);
+				return true;
+			}
 		}
 	}
 }
