@@ -18,8 +18,10 @@ state("SpeciesUnknown-Win64-Shipping")
 	//ulong Character:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300;
 	ulong CharacterInteractingActor:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xC28;
 	ulong CharacterFocusedWidget:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xC30, 0x7D8;
-	ulong WeaponInventory:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xC48;
-	uint WeaponCount:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xC50;
+	ulong WeaponOut:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xA70;
+	bool WeaponOutIsReloading:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xA70, 0x52C;
+	//ulong WeaponInventory:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xC48;
+	//uint WeaponCount:	0x08E44360, 0x12C8, 0x38, 0x0, 0x30, 0x300, 0xC50;
 	
 	//uint MissionTimerSec:	0x08E41410, 0x1B0, 0x46C;
 	ulong GameManager:	0x08E41410, 0x1B0, 0x350;
@@ -89,6 +91,7 @@ init
 		{"reloadAnim",				0x4D8},
 		{"isAuto",					0x523},
 		{"ammoMax",					0x528},
+		{"isReloading",				0x522},
 		{"distanceMax",				0x548},
 		{"invAmmoMax",				0x988},
 		{"damage",					0x998},
@@ -156,16 +159,61 @@ update
 		print(monsterAddress.ToString("X") + ": MONSTER\nMonster is " + monsterString + " (Enum " + monsterEnumString + ")");
 	}
 	
-	if (current.WeaponCount > old.WeaponCount)
+	if (current.WeaponOut != old.WeaponOut && current.WeaponOut != 0)
 	{
 		// Weapons.
 
-		ulong weaponAddress = memory.ReadValue<ulong>((IntPtr)(current.WeaponInventory + (ulong)(0x08 * (current.WeaponCount - 1))));
+		ulong weaponAddress = current.WeaponOut;
 		string weaponString = vars.getFNameToString(weaponAddress);
 
-		string statsString = "Stats:\n	Fire Rate: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["fireRate"])).ToString() + "\n	Automatic: " + memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["isAuto"])).ToString() + "\n	Ammo Max: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["ammoMax"])).ToString() + "\n	Distance Max: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["distanceMax"])).ToString() + "\n	Inv Ammo Max: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["invAmmoMax"])).ToString() + "\n	Damage: " + memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["damage"])).ToString() + "\n	Pellet Num: " + memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["pelletNum"])).ToString() + "\n	Shoots Multiple Pellets: " + memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["shootMultiplePellets"])).ToString();
+		double fireRate = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["fireRate"]));
+		bool isAuto = memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["isAuto"]));
+		float reloadTime = memory.ReadValue<float>(memory.ReadValue<IntPtr>((IntPtr)(weaponAddress + vars.weaponStructDict["reloadAnim"])) + 0x90);
+		int ammoMax = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["ammoMax"]));
+		double distanceMax = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["distanceMax"]));
+		int invAmmoMax = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["invAmmoMax"]));
+		double dmg = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["damage"]));
+		int pelletNum = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["pelletNum"]));
+		bool shootMultiplePellets = memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["shootMultiplePellets"]));
 
-		print(weaponAddress.ToString("X") + ": WEAPON\nPlayer picked up " + weaponString + "\n" + statsString);
+		double dmgPerShot = dmg * ((shootMultiplePellets) ? pelletNum : 1);
+
+		double dmgPerSecond_NoReload = dmgPerShot / fireRate;
+
+		string statsString = "Stats:\n	Fire Rate: " + fireRate.ToString() + "\n	Automatic: " + isAuto.ToString() + "\n	Ammo Max: " + ammoMax.ToString() + "\n	Distance Max: " + distanceMax.ToString() + "\n	Inv Ammo Max: " + invAmmoMax.ToString() + "\n	Damage: " + dmg.ToString() + "\n	Pellet Num: " + pelletNum.ToString() + "\n	Shoots Multiple Pellets: " + shootMultiplePellets.ToString() + "\n	Estimated dmg/s (no reload): " + dmgPerSecond_NoReload.ToString();
+
+		print(weaponAddress.ToString("X") + ": WEAPON\nPlayer took out " + weaponString + "\n" + statsString);
+	}
+
+	if (current.WeaponOutIsReloading && !old.WeaponOutIsReloading)
+	{
+		vars.startReloadTime = DateTime.UtcNow;
+	}
+
+	if (!current.WeaponOutIsReloading && old.WeaponOutIsReloading)
+	{
+		vars.endReloadTime = DateTime.UtcNow;
+
+		vars.reloadTimeElapsed = vars.endReloadTime - vars.startReloadTime;
+		
+		ulong weaponAddress = current.WeaponOut;
+		string weaponString = vars.getFNameToString(weaponAddress);
+
+		double fireRate = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["fireRate"]));
+		bool isAuto = memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["isAuto"]));
+		float reloadTime = memory.ReadValue<float>(memory.ReadValue<IntPtr>((IntPtr)(weaponAddress + vars.weaponStructDict["reloadAnim"])) + 0x90);
+		int ammoMax = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["ammoMax"]));
+		double distanceMax = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["distanceMax"]));
+		int invAmmoMax = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["invAmmoMax"]));
+		double dmg = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["damage"]));
+		int pelletNum = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["pelletNum"]));
+		bool shootMultiplePellets = memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["shootMultiplePellets"]));
+
+		double dmgPerShot = dmg * ((shootMultiplePellets) ? pelletNum : 1);
+
+		double dmgPerSecond_Reload = (dmgPerShot * ammoMax) / (fireRate * ammoMax + vars.reloadTimeElapsed.TotalSeconds);
+
+		print("Reload took " + vars.reloadTimeElapsed.TotalSeconds.ToString() + " seconds!\n	Estimated dmg/s (reload): " + dmgPerSecond_Reload.ToString());
 	}
 }
 
