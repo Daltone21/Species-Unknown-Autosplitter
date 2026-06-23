@@ -63,7 +63,7 @@ startup
 	settings.Add("reset", false, "Reset Settings");
 	
 	settings.CurrentDefaultParent = "reset";
-	settings.Add("reset_GoToLobby", true, "Go To Lobby");
+	settings.Add("reset_GoToLobby", false, "Go To Lobby");
 	
 	settings.CurrentDefaultParent = null;
 }
@@ -72,25 +72,28 @@ init
 {
 	// Function declarations.
 
-	vars.getFNameToString = (Func<ulong, string>)((UObjectAddress) => {
+	vars.getFNameToString = (Func<IntPtr, string>)((UObjectAddress) => {
 
-		if (UObjectAddress == (ulong)0) return null;
+		if (UObjectAddress == IntPtr.Zero) return null;
 
-		ulong FName = UObjectAddress + 0x18;
-		ushort blockKey = memory.ReadValue<ushort>((IntPtr)(FName + 0x02));
-		ushort innerKey = memory.ReadValue<ushort>((IntPtr)FName);
+		IntPtr FName = IntPtr.Add(UObjectAddress, 0x18);
+		uint comparisonID = memory.ReadValue<uint>(FName);
 
-		ulong FNamePool = (ulong)modules.First().BaseAddress + (ulong)vars.FNamePoolOffset;
-		ulong blockAddress = memory.ReadValue<ulong>((IntPtr)(FNamePool + (ulong)vars.FNamePoolModBase + (ulong)(0x08 * blockKey)));
-		ulong FNameEntryAddress = blockAddress + (ulong)(0x02 * innerKey);
+		ushort blockKey = (ushort)(comparisonID >> 16);
+		ushort innerKey = (ushort)comparisonID;
+		int blockStartOffset = 0x30;
+		
+		IntPtr blockPtr = IntPtr.Add(vars.FNamePoolBase, ((int)(blockKey) + 2) * 8 + blockStartOffset);
+		ulong FNameEntryAddress = memory.ReadValue<ulong>(blockPtr) + 2 * (ulong)innerKey;
 
-		ushort stringLength = (ushort)(memory.ReadValue<ushort>((IntPtr)FNameEntryAddress) >> 6);
-		ulong FNameStringStartAddress = FNameEntryAddress + 0x02;
+		ushort Header = memory.ReadValue<ushort>((IntPtr)FNameEntryAddress);
+		IntPtr FNameStringStartAddress = (IntPtr)(FNameEntryAddress + 2);
 
-		string FNameString = memory.ReadString((IntPtr)FNameStringStartAddress, stringLength);
+		ushort stringLength = (ushort)(Header >> 6);
+
+		string FNameString = memory.ReadString(FNameStringStartAddress, stringLength);
 
 		return FNameString;
-		
 	});
 	
 	// Credit to Micrologist and Meta for this func, found in the Stray autosplitter.
@@ -104,147 +107,100 @@ init
 	});
 
 	// Find UWorld via sigscan.
+
 	string sig = "48 89 5C 24 18 56 48 83 EC 40 41 8B D8 48 8B F2";
-	int insOffset = 236;
+	int insOffset = 0xEC;
 
-	IntPtr UWorld = vars.GetStaticPointerFromSig(sig, insOffset);
-	IntPtr UWorldOffset = (IntPtr)((ulong)UWorld - (ulong)modules.First().BaseAddress);
-
-	if (UWorld == IntPtr.Zero)
+	vars.UWorldPointer = vars.GetStaticPointerFromSig(sig, insOffset);
+	
+	if (vars.UWorldPointer == IntPtr.Zero)
 	{
-		throw new System.Exception("ERROR: UWorld could not be found via given signature\n	" + sig);
+		MessageBox.Show("UWorld could not be found via given signature\n" + sig, "ERROR: Autosplitter Will Not Work", MessageBoxButtons.OK, MessageBoxIcon.Error);
 	}
-	print(UWorld.ToString("X"));
-	print(UWorldOffset.ToString("X"));
 
-	//print("Game Detected!\nGEngine Address: " + current.GEngine.ToString("X") + "\nUWorld Address: " + current.UWorld.ToString("X"));
+	IntPtr UWorldOffset = (IntPtr)((ulong)vars.UWorldPointer - (ulong)modules.First().BaseAddress);
+
+	// Find FNamePool via sigscan.
+
+	sig = "48 89 5C 24 10 48 89 74 24 18 57 48 83 EC 30 83 79 04 00";
+	insOffset = 0x32;
 	
-	// Certain variables.
+	var sigScanner = new SignatureScanner(game, modules.First().BaseAddress, (int)modules.First().ModuleMemorySize);
+	var sigPattern = new SigScanTarget(sig);
+	var sigLocation = sigScanner.Scan(sigPattern);
 
-	vars.completedSectionGoals = new List<string>();
-
-	// Defined data structures and offsets.
-
-	vars.FNamePoolOffset =	0x8BE8618;
-	vars.FNamePoolModBase =	-0x09 * 0x08;
-
-	vars.objectiveStructDict = new Dictionary<string, uint>
+	if (sigLocation == IntPtr.Zero)
 	{
-		{"size",		0x20},
-		{"FName",		0x00},
-		{"FText",		0x08},
-		{"isActual",	0x18},
-		{"isComplete",	0x19},
-		{"isCancel",	0x1A},
-	};
+		vars.FNamePoolBase = IntPtr.Zero;
+	}
+	else
+	{
+		int disp = game.ReadValue<int>((IntPtr)sigLocation + insOffset);
+		vars.FNamePoolBase = (IntPtr)(sigLocation + 0x06) + disp;
+	}
+
+	if (vars.FNamePoolBase == IntPtr.Zero)
+	{
+		MessageBox.Show("FNamePool could not be found via given signature\n" + sig, "ERROR: Autosplitter Will Not Work", MessageBoxButtons.OK, MessageBoxIcon.Error);
+	}
+
+	ulong FNamePoolOffset = (ulong)((ulong)vars.FNamePoolBase - (ulong)modules.First().BaseAddress);
+
+	// Print the game information.
+
+	print("UWorldOffset:\n0x" + UWorldOffset.ToString("X") + "\nFNamePoolOffset:\n0x" + FNamePoolOffset.ToString("X"));;
 	
-	vars.weaponStructDict = new Dictionary<string, uint>
-	{
-		{"fireRate",				0x478},
-		{"reloadAnim",				0x4D8},
-		{"isAuto",					0x523},
-		{"ammoMax",					0x528},
-		{"isReloading",				0x522},
-		{"distanceMax",				0x548},
-		{"invAmmoMax",				0x988},
-		{"damage",					0x998},
-		{"pelletNum",				0xA2C},
-		{"shootMultiplePellets",	0xA30},
+	// Watcher variables used in code.
+
+	vars.watchers = new MemoryWatcherList {
+
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer)) {Name = "UWorld" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, 0x1B0, 0x350, 0x2D0)) {Name = "Monster" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, 0x1B0, 0x350, 0x2D8)) {Name = "PlayerArray" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, 0x1B0, 0x350, 0x2D8, 0x0, 0xC28)) {Name = "Player1InteractingActor" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<uint>(new DeepPointer(vars.UWorldPointer, 0x1B0, 0x350, 0x2E0)) {Name = "PlayerCount" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<byte>(new DeepPointer(vars.UWorldPointer, 0x1B0, 0x5B9)) {Name = "MonsterEnum" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+
 	};
 
+	//return false;
 }
 
 update
 {
-	return false;
+	vars.watchers.UpdateAll(game);
+
 	// Create debug/coding tools.
 
-	if (current.CharacterInteractingActor != old.CharacterInteractingActor && current.CharacterInteractingActor != 0)
+	if (vars.watchers["Player1InteractingActor"].Changed && vars.watchers["Player1InteractingActor"].Current != IntPtr.Zero)
 	{
 		// Actors.
 
-		ulong objectAddress = current.CharacterInteractingActor;
+		IntPtr objectAddress = vars.watchers["Player1InteractingActor"].Current;
 		string objectString = vars.getFNameToString(objectAddress);
 
-		print(objectAddress.ToString("X") + ": ACTOR\nPlayer interacted with actor " + objectString);
+		print("0x" + objectAddress.ToString("X") + ": ACTOR\nPlayer interacted with actor " + objectString);
 	}
 	
-	if (current.CharacterFocusedWidget != old.CharacterFocusedWidget && current.CharacterFocusedWidget != 0)
+	/*
+	if (vars.watchers["Player1FocusedWidget"].Changed && vars.watchers["Player1FocusedWidget"].Current != IntPtr.Zero)
 	{
 		// Widgets.
 
-		ulong widgetAddress = current.CharacterFocusedWidget;
+		IntPtr widgetAddress = vars.watchers["Player1FocusedWidget"].Current;
 		string widgetString = vars.getFNameToString(widgetAddress);
 
-		print(widgetAddress.ToString("X") + ": WIDGET\nPlayer interacted with widget " + widgetString);
-	}
+		print("0x" + widgetAddress.ToString("X") + ": WIDGET\nPlayer interacted with widget " + widgetString);
+	}*/
 
-	if (current.Monster != old.Monster && current.Monster != 0)
+	if (vars.watchers["Monster"].Changed && vars.watchers["Monster"].Current != IntPtr.Zero)
 	{
 		// Monster.
 
-		ulong monsterAddress = current.Monster;
+		IntPtr monsterAddress = vars.watchers["Monster"].Current;
 		string monsterString = vars.getFNameToString(monsterAddress);
-		string monsterEnumString = current.MonsterEnum.ToString();
 
-		print(monsterAddress.ToString("X") + ": MONSTER\nMonster is " + monsterString + " (Enum " + monsterEnumString + ")");
-	}
-	
-	if (current.WeaponOut != old.WeaponOut && current.WeaponOut != 0)
-	{
-		// Weapons.
-
-		ulong weaponAddress = current.WeaponOut;
-		string weaponString = vars.getFNameToString(weaponAddress);
-
-		double fireRate = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["fireRate"]));
-		bool isAuto = memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["isAuto"]));
-		float reloadTime = memory.ReadValue<float>(memory.ReadValue<IntPtr>((IntPtr)(weaponAddress + vars.weaponStructDict["reloadAnim"])) + 0x90);
-		int ammoMax = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["ammoMax"]));
-		double distanceMax = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["distanceMax"]));
-		int invAmmoMax = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["invAmmoMax"]));
-		double dmg = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["damage"]));
-		int pelletNum = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["pelletNum"]));
-		bool shootMultiplePellets = memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["shootMultiplePellets"]));
-
-		double dmgPerShot = dmg * ((shootMultiplePellets) ? pelletNum : 1);
-
-		double dmgPerSecond_NoReload = dmgPerShot / fireRate;
-
-		string statsString = "Stats:\n	Fire Rate: " + fireRate.ToString() + "\n	Automatic: " + isAuto.ToString() + "\n	Ammo Max: " + ammoMax.ToString() + "\n	Distance Max: " + distanceMax.ToString() + "\n	Inv Ammo Max: " + invAmmoMax.ToString() + "\n	Damage: " + dmg.ToString() + "\n	Pellet Num: " + pelletNum.ToString() + "\n	Shoots Multiple Pellets: " + shootMultiplePellets.ToString() + "\n	Estimated dmg/s (no reload): " + dmgPerSecond_NoReload.ToString();
-
-		print(weaponAddress.ToString("X") + ": WEAPON\nPlayer took out " + weaponString + "\n" + statsString);
-	}
-
-	if (current.WeaponOutIsReloading && !old.WeaponOutIsReloading)
-	{
-		vars.startReloadTime = DateTime.UtcNow;
-	}
-
-	if (!current.WeaponOutIsReloading && old.WeaponOutIsReloading)
-	{
-		vars.endReloadTime = DateTime.UtcNow;
-
-		vars.reloadTimeElapsed = vars.endReloadTime - vars.startReloadTime;
-		
-		ulong weaponAddress = current.WeaponOut;
-		string weaponString = vars.getFNameToString(weaponAddress);
-
-		double fireRate = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["fireRate"]));
-		bool isAuto = memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["isAuto"]));
-		float reloadTime = memory.ReadValue<float>(memory.ReadValue<IntPtr>((IntPtr)(weaponAddress + vars.weaponStructDict["reloadAnim"])) + 0x90);
-		int ammoMax = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["ammoMax"]));
-		double distanceMax = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["distanceMax"]));
-		int invAmmoMax = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["invAmmoMax"]));
-		double dmg = memory.ReadValue<double>((IntPtr)(weaponAddress + vars.weaponStructDict["damage"]));
-		int pelletNum = memory.ReadValue<int>((IntPtr)(weaponAddress + vars.weaponStructDict["pelletNum"]));
-		bool shootMultiplePellets = memory.ReadValue<bool>((IntPtr)(weaponAddress + vars.weaponStructDict["shootMultiplePellets"]));
-
-		double dmgPerShot = dmg * ((shootMultiplePellets) ? pelletNum : 1);
-
-		double dmgPerSecond_Reload = (dmgPerShot * ammoMax) / (fireRate * ammoMax + vars.reloadTimeElapsed.TotalSeconds);
-
-		print("Reload took " + vars.reloadTimeElapsed.TotalSeconds.ToString() + " seconds!\n	Estimated dmg/s (reload): " + dmgPerSecond_Reload.ToString());
+		print("0x" + monsterAddress.ToString("X") + ": MONSTER\nMonster is " + monsterString + " (Enum " + vars.watchers["MonsterEnum"].Current.ToString() + ")");
 	}
 }
 
@@ -252,7 +208,20 @@ start
 {
 	if (settings["start_OpenShipDoor"])
 	{
-		if (current.CharacterInteractingActor != old.CharacterInteractingActor && vars.getFNameToString(current.CharacterInteractingActor) == "BP_LeverShip_C")
+		/*
+		vars.doFuncForAllPlayers((Func<IntPtr, bool>)((playerAddress) => {
+			IntPtr characterInteractingActor = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(playerAddress, 0xC28));
+print("Checking player at address 0x" + playerAddress.ToString("X") + " for ship door interaction...");
+			if (characterInteractingActor != IntPtr.Zero)
+			{
+				print("Player is interacting with actor at address 0x" + characterInteractingActor.ToString("X"));
+				//startRun = true;
+			}
+			return true;
+		}));
+		*/
+
+		if (vars.watchers["Player1InteractingActor"].Changed && vars.getFNameToString(vars.watchers["Player1InteractingActor"].Current) == "BP_LeverShip_C")
 		{
 			return true;
 		}
@@ -263,14 +232,14 @@ onStart
 {
 	// Global variables used in code. Here for reference and resetting at the start of a run.
 	vars.indexOfLastCompletedObjective = -1;
-	vars.completedSectionGoals.Clear();
+	vars.completedSectionGoals = new List<string>();
 }
 
 reset
 {
 	if(settings["reset_GoToLobby"])
 	{
-		if (current.GameManager == 0 && old.GameManager != 0)
+		if (vars.watchers["UWorld"].Current == IntPtr.Zero)
 		{
 			return true;
 		}
