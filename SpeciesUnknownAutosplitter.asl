@@ -264,7 +264,7 @@ update
 {
 	vars.watchers.UpdateAll(game);
 
-	// Based on certain conditions, check levels for important actors and add their addresses to the importantActors dictionary.
+	// Check levels for important actors and add their addresses to the importantActors dictionary.
 
 	// Clear the importantActors if the world changes.
 	if (vars.watchers["UWorld"].Changed) vars.importantActors.Clear();
