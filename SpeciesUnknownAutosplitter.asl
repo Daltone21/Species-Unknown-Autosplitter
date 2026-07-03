@@ -116,6 +116,7 @@ init
 
 	vars.MONSTERPOULPI_EYERIGHTCUT = 0x1398;
 	vars.MONSTERPOULPI_EYELEFTCUT = 0x1399;
+	vars.MONSTERPOULPI_BREAKHEAD = 0x13C4;
 	
 	vars.MONSTERMIKE_HEADBREAKLEFT = 0x1308;
 	vars.MONSTERMIKE_HEADBREAKRIGHT = 0x1309;
@@ -516,41 +517,45 @@ split
 			default:
 				break;
 			case 2: // Octopus
+				bool eyeRightCut = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERPOULPI_EYERIGHTCUT));
+				bool eyeLeftCut = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERPOULPI_EYELEFTCUT));
+				bool breakHead = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERPOULPI_BREAKHEAD));
 				if (settings["split_MonsterSpecific_Octopus_CutAnEye"])
 				{
-					bool eyeRightCut = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERPOULPI_EYERIGHTCUT));
-					bool eyeLeftCut = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERPOULPI_EYELEFTCUT));
-					int eyeCutCount = 0;
-					if (eyeRightCut) eyeCutCount++;
-					if (eyeLeftCut) eyeCutCount++;
-					if (vars.monsterPhase < eyeCutCount)
+					int damageCount = 0;
+					if (eyeRightCut) damageCount++;
+					if (eyeLeftCut) damageCount++;
+					if (breakHead) damageCount++;
+					if (vars.monsterPhase < damageCount && damageCount < 3)
 					{
-						vars.monsterPhase = eyeCutCount;
+						vars.monsterPhase = damageCount;
 						print("split_MonsterSpecific_Octopus_CutAnEye");
 						return true;
 					}
 				}
 				break;
 			case 3: // Mike
+				bool headBreakLeft = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERMIKE_HEADBREAKLEFT));
+				bool headBreakRight = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERMIKE_HEADBREAKRIGHT));
 				if (settings["split_MonsterSpecific_Mike_BreakAFace"])
 				{
-					bool headBreakLeft = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERMIKE_HEADBREAKLEFT));
-					bool headBreakRight = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERMIKE_HEADBREAKRIGHT));
-					int headBreakCount = 0;
-					if (headBreakLeft) headBreakCount++;
-					if (headBreakRight) headBreakCount++;
-					if (vars.monsterPhase < headBreakCount)
+					int damageCount = 0;
+					if (headBreakLeft) damageCount++;
+					if (headBreakRight) damageCount++;
+					if (vars.monsterPhase < damageCount)
 					{
-						vars.monsterPhase = headBreakCount;
+						vars.monsterPhase = damageCount;
 						print("split_MonsterSpecific_Mike_BreakAFace");
 						return true;
 					}
 				}
 				break;
 			case 4: // The Eye
+				bool haveShield = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTEREYE_HAVESHIELD));
+				bool dropOil = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTEREYE_DROPOIL));
+				bool breakGlass = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTEREYE_BREAKGLASS));
 				if (settings["split_MonsterSpecific_TheEye_LoseShield"])
 				{
-					bool haveShield = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTEREYE_HAVESHIELD));
 					if (vars.monsterPhase < 1 && !haveShield)
 					{
 						vars.monsterPhase = 1;
@@ -560,7 +565,6 @@ split
 				}
 				if (settings["split_MonsterSpecific_TheEye_StartDroppingOil"])
 				{
-					bool dropOil = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTEREYE_DROPOIL));
 					if (vars.monsterPhase < 2 && dropOil)
 					{
 						vars.monsterPhase = 2;
@@ -570,7 +574,6 @@ split
 				}
 				if (settings["split_MonsterSpecific_TheEye_BreakGlass"])
 				{
-					bool breakGlass = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTEREYE_BREAKGLASS));
 					if (vars.monsterPhase < 3 && breakGlass)
 					{
 						vars.monsterPhase = 3;
