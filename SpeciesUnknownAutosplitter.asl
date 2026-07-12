@@ -80,64 +80,58 @@ startup
 
 init
 {
-	// Offsets of classes possible to change with updates. The value of PARENT_CHILD is the offset of CHILD from PARENT.
-	// Update when possible to make the autosplitter more resilient to updates.
-
-	vars.UWORLD_MYGAMESTATE = 0x1B0;
-
-	vars.MYGAMESTATE_GAMEMANAGER = 0x350;
-	vars.MYGAMESTATE_MONSTERENUM = 0x5B9;
-
-	vars.GAMEMANAGER_MONSTER = 0x2D0;
-	vars.GAMEMANAGER_PLAYERARRAY = 0x2D8;
-
-	vars.CHARACTER_MYPLAYERSTATE = 0x2D0;
-	vars.CHARACTER_INTERACTINGACTOR = 0xCB8;
-	vars.CHARACTER_MYPLAYERCONTROLLER = 0xCC0;
-
-	vars.MYPLAYERSTATE_OBJECTIVECOUNT = 0x410;
-	vars.MYPLAYERSTATE_OLDOBJECTIVE = 0x43C;
-
-	vars.MYPLAYERCONTROLLER_INWIDGETTOFOCUS = 0x7E0;
-
-	vars.LEVERSHIP_ISUSED = 0x328;
-	vars.LEVERSHIP_ACTIVATEDONCE = 0x348;
-
-	vars.CONSOLEKEYPASS_MAX = 0x4B8;
-	vars.CONSOLEKEYPASS_CURRENT = 0x4BC;
-	
-	vars.REACTORCONTROLTERMINAL_FINISHED = 0x4A9;
-
-	vars.GAZCONTROLTERMINAL_PUZZLE = 0x490;
-	vars.PUZZLE_PURGE = 0x4E8;
-
-	vars.BASEMONSTER_HEALTH = 0xD00;
-	vars.BASEMONSTER_MAXHEALTH = 0xD08;
-
-	vars.MONSTERPOULPI_EYERIGHTCUT = 0x1398;
-	vars.MONSTERPOULPI_EYELEFTCUT = 0x1399;
-	vars.MONSTERPOULPI_BREAKHEAD = 0x13C4;
-	
-	vars.MONSTERMIKE_HEADBREAKLEFT = 0x1308;
-	vars.MONSTERMIKE_HEADBREAKRIGHT = 0x1309;
-	
-	vars.MONSTEREYE_HAVESHIELD = 0x13B8;
-	vars.MONSTEREYE_DROPOIL = 0x1438;
-	vars.MONSTEREYE_BREAKGLASS = 0x1439;
-	
-	vars.MONSTERPEACEKEEPER_GATLING = 0x13A0;
-
-	vars.GATLING_CANFIRE = 0x889;
-	vars.GATLING_LIFEVALUE = 0x8F0;
+	// The below dictionary has already been populated with offsets that are engine offsets, thus unlikely to change between updates.
+	vars.offsets = new Dictionary<string, Dictionary<string, int>> {
+		{"UWorld", new Dictionary<string, int> {
+			{"GameState", 0x1B0},
+			{"Levels", 0x1C8},
+		}},
+		{"ULevel", new Dictionary<string, int> {
+			{"Actors", 0xA0},
+		}},
+		{"UObject", new Dictionary<string, int> {
+			{"Index", 0x0C},
+			{"Class", 0x10},
+			{"Name", 0x18},
+			{"Outer", 0x20},
+		}},
+		{"FName", new Dictionary<string, int> {
+			{"ComparisonIndex", 0x00},
+			{"Number", 0x04},
+		}},
+		{"UStruct", new Dictionary<string, int> {
+			{"SuperStruct", 0x40},
+			{"Offset", 0x44},
+			{"ChildProperties", 0x50},
+		}},
+		{"FField", new Dictionary<string, int> {
+			{"ClassPrivate", 0x08},
+			{"Next", 0x18},
+			{"Name", 0x20},
+		}},
+		{"FFieldClass", new Dictionary<string, int> {
+			{"Name", 0x00},
+		}},
+		{"TUObjectArray", new Dictionary<string, int> {
+			{"Objects", 0x00},
+			{"MaxElements", 0x10},
+			{"NumElements", 0x14},
+			{"MaxChunks", 0x18},
+			{"NumChunks", 0x1C},
+		}},
+		{"Pawn", new Dictionary<string, int> {
+			{"PlayerState", 0x2D0},
+			{"Controller", 0x2E0}
+		}},
+	};
 
 	// Function declarations.
 
-	vars.getFNameToString = (Func<IntPtr, string>)((UObjectAddress) => {
+	vars.FNameToString = (Func<IntPtr, string>)((FName_i) => {
 
-		if (UObjectAddress == IntPtr.Zero) return null;
+		if (FName_i == IntPtr.Zero) return null;
 
-		IntPtr FName = IntPtr.Add(UObjectAddress, 0x18);
-		uint comparisonID = memory.ReadValue<uint>(FName);
+		uint comparisonID = memory.ReadValue<uint>(FName_i);
 
 		ushort blockKey = (ushort)(comparisonID >> 16);
 		ushort innerKey = (ushort)comparisonID;
@@ -149,11 +143,22 @@ init
 		ushort Header = memory.ReadValue<ushort>((IntPtr)FNameEntryAddress);
 		IntPtr FNameStringStartAddress = (IntPtr)(FNameEntryAddress + 2);
 
-		ushort stringLength = (ushort)(Header >> 6);
+		short stringLength = (short)(Header >> 6);
+
+		if (stringLength <= 0) return "";
 
 		string FNameString = memory.ReadString(FNameStringStartAddress, stringLength);
 
 		return FNameString;
+	});
+
+	vars.objectToString = (Func<IntPtr, string>)((object_i) => {
+
+		if (object_i == IntPtr.Zero) return null;
+		
+		IntPtr FName = IntPtr.Add(object_i, vars.offsets["UObject"]["Name"]);
+
+		return vars.FNameToString(FName);
 	});
 	
 	// Credit to Micrologist and Meta, this func was found in the Stray asl.
@@ -169,8 +174,8 @@ init
 	// Loop through a specific loaded level and find the actor's address. Returns the first instance of the actor.
 	vars.getActorInLevel = (Func<string, string, IntPtr>)((actorString_i, levelString_i) => {
 		
-		uint numOfLevels = memory.ReadValue<uint>((IntPtr)IntPtr.Add(vars.watchers["UWorld"].Current, 0x1D0));
-		IntPtr levelTArray = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(vars.watchers["UWorld"].Current, 0x1C8));
+		uint numOfLevels = memory.ReadValue<uint>((IntPtr)IntPtr.Add(vars.watchers["UWorld"].Current, vars.offsets["UWorld"]["Levels"] + 0x08));
+		IntPtr levelTArray = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(vars.watchers["UWorld"].Current, vars.offsets["UWorld"]["Levels"]));
 
 		IntPtr levelAddress = IntPtr.Zero;
 		string levelString = "";
@@ -179,24 +184,22 @@ init
 		{
 			levelAddress = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelTArray, 8 * k));
 			if (levelAddress == IntPtr.Zero) continue;
-			IntPtr outer = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelAddress, 0x20));
-			levelString = vars.getFNameToString(outer);
+			IntPtr outer = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelAddress, vars.offsets["UObject"]["Outer"]));
+			levelString = vars.objectToString(outer);
 			if (levelString == levelString_i) break;
 		}
 
 		if (levelString != levelString_i) return IntPtr.Zero;
 
-		uint numOfActors = memory.ReadValue<uint>((IntPtr)IntPtr.Add(levelAddress, 0xA8));
-		IntPtr actorTArray = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelAddress, 0xA0));
+		uint numOfActors = memory.ReadValue<uint>((IntPtr)IntPtr.Add(levelAddress, vars.offsets["ULevel"]["Actors"] + 0x08));
+		IntPtr actorTArray = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelAddress, vars.offsets["ULevel"]["Actors"]));
 
 		for (int k = 0; k < numOfActors; k++)
 		{
 			IntPtr actorAddress = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(actorTArray, 8 * k));
 			if (actorAddress == IntPtr.Zero) continue;
-			string actorString = vars.getFNameToString(actorAddress);
-			if (actorString == actorString_i) {
-				return actorAddress;
-			}
+			string actorString = vars.objectToString(actorAddress);
+			if (actorString == actorString_i) return actorAddress;
 		}
 
 		return IntPtr.Zero;
@@ -205,17 +208,20 @@ init
 	// Dump the currently loaded level names.
 	vars.dumpLevelNames = (Func<bool>)(() => {
 		
-		uint numOfLevels = memory.ReadValue<uint>((IntPtr)IntPtr.Add(vars.watchers["UWorld"].Current, 0x1D0));
-		IntPtr levelTArray = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(vars.watchers["UWorld"].Current, 0x1C8));
+		IntPtr levelTArrayAddress = (IntPtr)IntPtr.Add(vars.watchers["UWorld"].Current, vars.offsets["UWorld"]["Levels"]);
+		IntPtr levelCountAddress = levelTArrayAddress + 0x08;
+
+		uint numOfLevels = memory.ReadValue<uint>(levelCountAddress);
+		IntPtr levelTArray = memory.ReadValue<IntPtr>(levelTArrayAddress);
 
 		string message = "";
 		
 		for (int k = 0; k < numOfLevels; k++)
 		{
-			IntPtr levelAddress = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelTArray, 8 * k));
+			IntPtr levelAddress = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelTArray, 0x08 * k));
 			if (levelAddress == IntPtr.Zero) continue;
-			IntPtr outer = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelAddress, 0x20));
-			string levelString = vars.getFNameToString(outer);
+			IntPtr outer = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelAddress, vars.offsets["UObject"]["Outer"]));
+			string levelString = vars.objectToString(outer);
 
 			if (k != 0) message += "\n";
 
@@ -224,6 +230,202 @@ init
 
 		print(message);
 		return true;
+	});
+
+	// Looks through the GObjects array to look for classes according to the offsetsToFind dictionary.
+	vars.searchForOffsets_GObjects = (Func<bool>)(() => {
+
+		if (vars.offsetsToFind.Count == 0) return true;
+
+		List<string> classesFound = new List<string> {};
+
+		IntPtr GObjects = memory.ReadValue<IntPtr>((IntPtr)vars.GObjectsPointer);
+
+		int numChunks = memory.ReadValue<int>((IntPtr)IntPtr.Add(GObjects, vars.offsets["TUObjectArray"]["NumChunks"]));
+		int numElements = memory.ReadValue<int>((IntPtr)IntPtr.Add(GObjects, vars.offsets["TUObjectArray"]["NumElements"]));
+
+		int elementsPerChunk = 0x10000;
+
+		IntPtr chunkArray = memory.ReadValue<IntPtr>(GObjects);
+
+		// Start going through each object in each object chunk and look for class definitions.
+		for (int chunk = 0; chunk < numChunks; chunk++)
+		{
+			int maxInChunkIndex = (chunk != numChunks - 1) ? elementsPerChunk : numElements % elementsPerChunk;
+
+			IntPtr inChunkAddress = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(chunkArray, chunk * 0x08));
+
+			for (int inChunk = 0; inChunk < maxInChunkIndex; inChunk++)
+			{
+				int chunkOffset = 0x18 * inChunk + 0x08;
+
+				IntPtr thisObj = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(inChunkAddress, chunkOffset));
+
+				if (thisObj == IntPtr.Zero) continue;
+
+				string objName = vars.objectToString(thisObj);
+				string classNameOfObj = vars.objectToString(memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(thisObj, vars.offsets["UObject"]["Class"])));
+
+				// Look into a class declaration.
+				if (classNameOfObj == "BlueprintGeneratedClass")
+				{
+					// Search through the vars.offsetsToFind dictionary to see if the FName matches any entry.
+					foreach (string parent in vars.offsetsToFind.Keys)
+					{
+						if (parent != objName) continue;
+
+						classesFound.Add(parent);
+						vars.offsets[parent] = new Dictionary<string, int>{};
+
+						List<string> propertiesFound = new List<string> {};
+						IntPtr currentProperty = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(thisObj, vars.offsets["UStruct"]["ChildProperties"]));
+
+						while (currentProperty != IntPtr.Zero)
+						{
+							IntPtr currentPropertyFName = IntPtr.Add(currentProperty, vars.offsets["FField"]["Name"]);
+							string currentPropertyNameStr = vars.FNameToString(currentPropertyFName);
+
+							// Search through the vars.offsetsToFind dictionary to see if the propertyNames of parent match any entry.
+							foreach(string child in vars.offsetsToFind[parent])
+							{
+								if (child.ToLower() != currentPropertyNameStr.ToLower()) continue;
+								
+								int propertyOffset = memory.ReadValue<int>((IntPtr)IntPtr.Add(currentProperty, vars.offsets["UStruct"]["Offset"]));
+								vars.offsets[parent][child] = propertyOffset;
+								print(parent + "." + child + ": 0x" + propertyOffset.ToString("X"));
+								propertiesFound.Add(child);
+							}
+
+							currentProperty = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(currentProperty, vars.offsets["FField"]["Next"]));
+						}
+
+						// Remove found properties from offsetsToFind[parent]
+						foreach (string property in propertiesFound)
+						{
+							vars.offsetsToFind[parent].Remove(property);
+						}
+
+						if (vars.offsetsToFind[parent].Count > 0)
+						{
+							string propertyList = "";
+							foreach (string child in vars.offsetsToFind[parent])
+							{
+								propertyList += "\n" + child;
+							}
+							string message = parent + " class's properties were not all found. Autosplitter may not work.\nRemaining properties:" + propertyList;
+							print(message);
+							MessageBox.Show(message, "WARNING: Autosplitter May Not Work", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+						}
+					}
+				}
+			}
+		}
+
+		// Remove found classes from offsetsToFind if it has no other properties to find.
+		foreach (string parent in classesFound)
+		{
+			if (vars.offsetsToFind[parent].Count == 0) vars.offsetsToFind.Remove(parent);
+		}
+
+		if (vars.offsetsToFind.Count > 0)
+		{
+			string classList = "";
+			foreach (string parent in vars.offsetsToFind.Keys)
+			{
+				classList += "\n" + parent;
+			}
+			string message = "Some classes were not found yet.\nRemaining classes:" + classList;
+			print(message);
+		}
+		else
+		{
+			print("All classes were found!");
+		}
+
+		return true;
+	});
+
+	// Looks through the instance's class and finds property offsets according to vars.offsetsToFind.
+	vars.searchForOffsets_Instance = (Func<IntPtr, bool>)((objectInstance_i) => {
+
+		if (objectInstance_i == IntPtr.Zero) return false;
+
+		IntPtr classObj = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(objectInstance_i, vars.offsets["UObject"]["Class"]));
+		string classNameOfObj = vars.objectToString(classObj);
+
+		// Search through the vars.offsetsToFind dictionary to see if the FName matches any entry.
+		foreach (string parent in vars.offsetsToFind.Keys)
+		{
+			if (parent != classNameOfObj) continue;
+
+			vars.offsets[parent] = new Dictionary<string, int>{};
+
+			List<string> propertiesFound = new List<string> {};
+			IntPtr currentProperty = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(classObj, vars.offsets["UStruct"]["ChildProperties"]));
+
+			while (currentProperty != IntPtr.Zero)
+			{
+				IntPtr currentPropertyFName = IntPtr.Add(currentProperty, vars.offsets["FField"]["Name"]);
+				string currentPropertyNameStr = vars.FNameToString(currentPropertyFName);
+
+				if (currentPropertyNameStr == "None" || currentPropertyNameStr == "") break;
+
+				// Search through the vars.offsetsToFind dictionary to see if the propertyNames of parent match any entry.
+				foreach(string child in vars.offsetsToFind[parent])
+				{
+					if (child != currentPropertyNameStr) continue;
+
+					int propertyOffset = memory.ReadValue<int>((IntPtr)IntPtr.Add(currentProperty, vars.offsets["UStruct"]["Offset"]));
+					vars.offsets[parent][child] = propertyOffset;
+					print(parent + "." + child + ": 0x" + propertyOffset.ToString("X"));
+					propertiesFound.Add(child);
+				}
+
+				currentProperty = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(currentProperty, vars.offsets["FField"]["Next"]));
+			}
+
+			// Remove found properties from offsetsToFind[parent]
+			foreach (string property in propertiesFound)
+			{
+				vars.offsetsToFind[parent].Remove(property);
+			}
+
+			if (vars.offsetsToFind[parent].Count > 0)
+			{
+				string propertyList = "";
+				foreach (string child in vars.offsetsToFind[parent])
+				{
+					propertyList += "\n" + child;
+				}
+				string message = parent + " class's properties were not all found. Autosplitter may not work.\nRemaining properties:" + propertyList;
+				print(message);
+				MessageBox.Show(message, "WARNING: Autosplitter May Not Work", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+			}
+
+			// Remove the class from offsetsToFind if it has no other properties to find.
+			if (vars.offsetsToFind[parent].Count == 0) vars.offsetsToFind.Remove(parent);
+
+			return true; // Early return since we already found the class we wanted; helps to not break the foreach.
+		}
+
+		return false;
+	});
+
+	// Scans for the first instance of an object given its FName string and what map it's located in.
+	vars.scanForActorIfNeeded = (Func<string, string, bool>)((actorName_i, levelName_i) => {
+
+		if (!vars.importantActors.ContainsKey(actorName_i))
+		{
+			IntPtr actor = vars.getActorInLevel(actorName_i, levelName_i);
+			if (actor != IntPtr.Zero)
+			{
+				vars.importantActors[actorName_i] = actor;
+				print("Scanned for and found:\n" + actorName_i + " at 0x" + actor.ToString("X") + " in " + levelName_i);
+				return true;
+			}
+		}
+
+		return false;
 	});
 
 	// Find UWorld via sigscan.
@@ -256,7 +458,7 @@ init
 	else
 	{
 		int disp = game.ReadValue<int>((IntPtr)sigLocation + insOffset);
-		vars.FNamePoolBase = (IntPtr)(sigLocation + 6) + disp;
+		vars.FNamePoolBase = (IntPtr)(sigLocation + 6 + disp);
 	}
 
 	if (vars.FNamePoolBase == IntPtr.Zero)
@@ -265,20 +467,103 @@ init
 	}
 
 	ulong FNamePoolOffset = (ulong)((ulong)vars.FNamePoolBase - (ulong)modules.First().BaseAddress);
+
+	// Find GUObjects via sigscan.
+
+	sig = "48 89 5C 24 08 57 48 83 EC 20 33 FF C7 41 04 FF FF FF FF";
+	insOffset = 0x8C;
+	
+	vars.GObjectsPointer = vars.GetStaticPointerFromSig(sig, insOffset);
+
+	ulong GObjectsOffset = (ulong)((ulong)vars.GObjectsPointer - (ulong)modules.First().BaseAddress);
+
+	// Initialize certain variables.
+
+	// Used for in-contract actor accessing (ConsoleKeypass, ReactorControl Terminal, etc.)
+	vars.importantActors = new Dictionary<string, IntPtr> {};
+
+	// Dictionary of necessary offsets to find via the vars.searchForOffsets_GObjects or vars.searchForObjects_Instace function.
+	vars.offsetsToFind = new Dictionary<string, List<string>> {
+		{"BP_ParentCharacter_C", new List<string> {
+			"Health",
+		}},
+		{"BP_MyGameState_C", new List<string> {
+			"GameManager",
+			"ActualMonster",
+		}},
+		{"BP_GameManager_C", new List<string> {
+			"Monster",
+			"Players",
+		}},
+		{"BP_MyPlayerState_C", new List<string> {
+			"ObjectiveList",
+			"OldObjective",
+		}},
+		{"BP_Character_C", new List<string> {
+			"LastInteract Actor",
+			"IsSitting",
+		}},
+		{"BP_MyPlayerController_C", new List<string> {
+			"In Widget to Focus",
+		}},
+		{"BP_LeverShip_C", new List<string> {
+			"IsUsed",
+			"ActivatedOnce",
+		}},
+		{"BP_ConsoleKeypass_C", new List<string> {
+			"max",
+			"Current",
+		}},
+		{"BP_ReactorControl_Terminal_REFACT_C", new List<string> {
+			"Finished",
+		}},
+		{"BP_GAZ_Control_Terminal_REFACT_C", new List<string> {
+			"BP_Puzzle",
+		}},
+		{"BP_Laboratory_PuzzleContainer_C", new List<string> {
+			"Purge",
+		}},
+		{"BP_BaseMonster_C", new List<string> {
+			"Health",
+			"MaxHealth",
+		}},
+		{"BP_Monster_Poulpi_C", new List<string> {
+			"EyeRightCut",
+			"EyeLeftCut",
+			"BreakHead",
+		}},
+		{"BP_Monster_Michel_C", new List<string> {
+			"HeadBreak_Left",
+			"HeadBreak_Right",
+		}},
+		{"BP_Monster_Eye_C", new List<string> {
+			"HaveShield",
+			"DropOil",
+			"BreakGlass",
+		}},
+		{"BP_BigRobot_C", new List<string> {
+			"Gatling",
+		}},
+		{"BP_Gatling_C", new List<string> {
+			"CanFire",
+			"LifeValue",
+		}},
+	};
+
+	vars.searchForOffsets_GObjects();
 	
 	// Watcher variables used in code.
 
 	vars.watchers = new MemoryWatcherList {
 
 		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer)) {Name = "UWorld" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.UWORLD_MYGAMESTATE, vars.MYGAMESTATE_GAMEMANAGER, vars.GAMEMANAGER_MONSTER)) {Name = "Monster" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<uint>(new DeepPointer(vars.UWorldPointer, vars.UWORLD_MYGAMESTATE, vars.MYGAMESTATE_GAMEMANAGER, vars.GAMEMANAGER_PLAYERARRAY + 0x08)) {Name = "PlayerCount" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.UWORLD_MYGAMESTATE, vars.MYGAMESTATE_GAMEMANAGER, vars.GAMEMANAGER_PLAYERARRAY)) {Name = "PlayerArray" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<uint>(new DeepPointer(vars.UWorldPointer, vars.UWORLD_MYGAMESTATE, vars.MYGAMESTATE_GAMEMANAGER, vars.GAMEMANAGER_PLAYERARRAY, 0x0, vars.CHARACTER_MYPLAYERSTATE, vars.MYPLAYERSTATE_OBJECTIVECOUNT)) {Name = "PlayerObjectiveCount" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<uint>(new DeepPointer(vars.UWorldPointer, vars.UWORLD_MYGAMESTATE, vars.MYGAMESTATE_GAMEMANAGER, vars.GAMEMANAGER_PLAYERARRAY, 0x0, vars.CHARACTER_MYPLAYERSTATE, vars.MYPLAYERSTATE_OLDOBJECTIVE)) {Name = "PlayerOldObjective" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.UWORLD_MYGAMESTATE, vars.MYGAMESTATE_GAMEMANAGER, vars.GAMEMANAGER_PLAYERARRAY, 0x0, vars.CHARACTER_INTERACTINGACTOR)) {Name = "PlayerInteractingActor" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.UWORLD_MYGAMESTATE, vars.MYGAMESTATE_GAMEMANAGER, vars.GAMEMANAGER_PLAYERARRAY, 0x0, vars.CHARACTER_MYPLAYERCONTROLLER, vars.MYPLAYERCONTROLLER_INWIDGETTOFOCUS)) {Name = "PlayerInteractingWidget" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<byte>(new DeepPointer(vars.UWorldPointer, vars.UWORLD_MYGAMESTATE, vars.MYGAMESTATE_MONSTERENUM)) {Name = "MonsterEnum" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Monster"])) {Name = "Monster" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<int>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["Pawn"]["PlayerState"], vars.offsets["BP_MyPlayerState_C"]["OldObjective"])) {Name = "ObjectivesDone" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<int>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["Pawn"]["PlayerState"], vars.offsets["BP_MyPlayerState_C"]["ObjectiveList"] + 0x08)) {Name = "TotalObjectiveCount" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["BP_Character_C"]["LastInteract Actor"])) {Name = "Player1_InteractingActor" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["Pawn"]["Controller"], vars.offsets["BP_MyPlayerController_C"]["In Widget to Focus"])) {Name = "Player1_FocusedWidget" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<bool>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["BP_Character_C"]["IsSitting"])) {Name = "Player1_IsSitting" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<byte>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["ActualMonster"])) {Name = "MonsterEnum" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 
 	};
 
@@ -286,35 +571,30 @@ init
 
 	vars.watchers.UpdateAll(game);
 
-	print("UWorldOffset:\n0x" + UWorldOffset.ToString("X") + "\nFNamePoolOffset:\n0x" + FNamePoolOffset.ToString("X"));
+	print("UWorldOffset:\n0x" + UWorldOffset.ToString("X") + "\nFNamePoolOffset:\n0x" + FNamePoolOffset.ToString("X") + "\nGObjectsOffset:\n0x" + GObjectsOffset.ToString("X"));
 
 	vars.dumpLevelNames();
 
 	IntPtr monsterAddress = vars.watchers["Monster"].Current;
-	IntPtr interactingActorAddress = vars.watchers["PlayerInteractingActor"].Current;
-	IntPtr interactingWidgetAddress = vars.watchers["PlayerInteractingWidget"].Current;
+	IntPtr interactingActorAddress = vars.watchers["Player1_InteractingActor"].Current;
+	IntPtr interactingWidgetAddress = vars.watchers["Player1_FocusedWidget"].Current;
 
 	string output = "";
 
 	if (monsterAddress != IntPtr.Zero)
 	{
-		output += "\nMonster: 0x " + monsterAddress.ToString("X") + "\n" + vars.getFNameToString(monsterAddress);
+		output += "\nMonster: 0x" + monsterAddress.ToString("X") + "\n" + vars.objectToString(monsterAddress);
 	}
 	if (interactingActorAddress != IntPtr.Zero)
 	{
-		output += "\nInteracting Actor: 0x " + interactingActorAddress.ToString("X") + "\n" + vars.getFNameToString(interactingActorAddress);
+		output += "\nInteracting Actor: 0x" + interactingActorAddress.ToString("X") + "\n" + vars.objectToString(interactingActorAddress);
 	}
 	if (interactingWidgetAddress != IntPtr.Zero)
 	{
-		output += "\nInteracting Widget: 0x " + interactingWidgetAddress.ToString("X") + "\n" + vars.getFNameToString(interactingWidgetAddress);
+		output += "\nInteracting Widget: 0x" + interactingWidgetAddress.ToString("X") + "\n" + vars.objectToString(interactingWidgetAddress);
 	}
 
 	if (output != "") print(output.Trim());
-
-	// Initialize certain variables.
-
-	vars.importantActors = new Dictionary<string, IntPtr> {};
-
 }
 
 update
@@ -324,23 +604,16 @@ update
 	// Check levels for important actors and add their addresses to the importantActors dictionary.
 
 	// Clear the importantActors if the world changes.
-	if (vars.watchers["UWorld"].Changed) vars.importantActors.Clear();
+	if (vars.watchers["UWorld"].Changed)
+	{
+		vars.importantActors.Clear();
+		vars.searchForOffsets_GObjects();
+	}
 
-	vars.scanForActorIfNeeded = (Func<string, string, bool>)((actorName_i, levelName_i) => {
-
-		if (!vars.importantActors.ContainsKey(actorName_i))
-		{
-			IntPtr actor = vars.getActorInLevel(actorName_i, levelName_i);
-			if (actor != IntPtr.Zero)
-			{
-				vars.importantActors[actorName_i] = actor;
-				print("Scanned for and found:\n" + actorName_i + " at 0x" + actor.ToString("X") + " in " + levelName_i);
-				return true;
-			}
-		}
-
-		return false;
-	});
+	if (!vars.watchers["Player1_IsSitting"].Current && vars.watchers["Player1_IsSitting"].Old)
+	{
+		vars.searchForOffsets_GObjects();
+	}
 
 	vars.scanForActorIfNeeded("BP_LeverShip_C", "SpaceShip");
 	vars.scanForActorIfNeeded("BP_ConsoleKeypass_C", "SpaceShip");
@@ -349,22 +622,22 @@ update
 
 	// Create debug/coding tools.
 
-	if (vars.watchers["PlayerInteractingActor"].Changed && vars.watchers["PlayerInteractingActor"].Current != IntPtr.Zero)
+	if (vars.watchers["Player1_InteractingActor"].Changed && vars.watchers["Player1_InteractingActor"].Current != IntPtr.Zero)
 	{
 		// Actors.
 
-		IntPtr objectAddress = vars.watchers["PlayerInteractingActor"].Current;
-		string objectString = vars.getFNameToString(objectAddress);
+		IntPtr objectAddress = vars.watchers["Player1_InteractingActor"].Current;
+		string objectString = vars.objectToString(objectAddress);
 
 		print("0x" + objectAddress.ToString("X") + ": ACTOR\nPlayer interacted with actor " + objectString);
 	}
 	
-	if (vars.watchers["PlayerInteractingWidget"].Changed && vars.watchers["PlayerInteractingWidget"].Current != IntPtr.Zero)
+	if (vars.watchers["Player1_FocusedWidget"].Changed && vars.watchers["Player1_FocusedWidget"].Current != IntPtr.Zero)
 	{
 		// Widgets.
 
-		IntPtr widgetAddress = vars.watchers["PlayerInteractingWidget"].Current;
-		string widgetString = vars.getFNameToString(widgetAddress);
+		IntPtr widgetAddress = vars.watchers["Player1_FocusedWidget"].Current;
+		string widgetString = vars.objectToString(widgetAddress);
 
 		print("0x" + widgetAddress.ToString("X") + ": WIDGET\nPlayer interacted with widget " + widgetString);
 	}
@@ -374,7 +647,15 @@ update
 		// Monster.
 
 		IntPtr monsterAddress = vars.watchers["Monster"].Current;
-		string monsterString = vars.getFNameToString(monsterAddress);
+		string monsterString = vars.objectToString(monsterAddress);
+
+		vars.searchForOffsets_Instance(vars.watchers["Monster"].Current);
+
+		if (monsterString == "BP_BigRobot_C")
+		{
+			IntPtr gatlingInstance = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(monsterAddress, vars.offsets["BP_BigRobot_C"]["Gatling"]));
+			vars.searchForOffsets_Instance(gatlingInstance);
+		}
 
 		print("0x" + monsterAddress.ToString("X") + ": MONSTER\nMonster is " + monsterString + " (Enum " + vars.watchers["MonsterEnum"].Current.ToString() + ")");
 	}
@@ -416,8 +697,8 @@ start
 	{
 		if (vars.importantActors.ContainsKey("BP_LeverShip_C"))
 		{
-			bool isUsed = memory.ReadValue<bool>((IntPtr)IntPtr.Add(vars.importantActors["BP_LeverShip_C"], vars.LEVERSHIP_ISUSED));
-			bool activatedOnce = memory.ReadValue<bool>((IntPtr)IntPtr.Add(vars.importantActors["BP_LeverShip_C"], vars.LEVERSHIP_ACTIVATEDONCE));
+			bool isUsed = memory.ReadValue<bool>((IntPtr)IntPtr.Add(vars.importantActors["BP_LeverShip_C"], vars.offsets["BP_LeverShip_C"]["IsUsed"]));
+			bool activatedOnce = memory.ReadValue<bool>((IntPtr)IntPtr.Add(vars.importantActors["BP_LeverShip_C"], vars.offsets["BP_LeverShip_C"]["ActivatedOnce"]));
 			if (isUsed && !activatedOnce)
 			{
 				print("start_OpenShipDoor");
@@ -432,6 +713,7 @@ onStart
 	// Global variables used in code. Here for reference and resetting at the start of a run.
 	vars.completedSectionGoals = new List<string>();
 	vars.monsterPhase = 0;
+	vars.objectivesComplete = 0;
 }
 
 reset
@@ -450,19 +732,17 @@ split
 {
 	if (vars.watchers["Monster"].Current == IntPtr.Zero) return false; // Disallows weird splitting mishaps in lobby and potentally other areas of the game.
 
-
-	if (settings["split_CompleteLastObjective"])
+	if (vars.objectivesComplete < vars.watchers["ObjectivesDone"].Current)
 	{
-		if (vars.watchers["PlayerOldObjective"].Changed && vars.watchers["PlayerOldObjective"].Current == vars.watchers["PlayerObjectiveCount"].Current)
+		vars.objectivesComplete = vars.watchers["ObjectivesDone"].Current;
+
+		if (settings["split_CompleteLastObjective"] && vars.objectivesComplete == vars.watchers["TotalObjectiveCount"].Current)
 		{
 			print("split_CompleteLastObjective");
 			return true;
 		}
-	}
 
-	if (settings["split_CompleteAnyObjective"])
-	{
-		if (vars.watchers["PlayerOldObjective"].Current > vars.watchers["PlayerOldObjective"].Old)
+		if (settings["split_CompleteAnyObjective"])
 		{
 			print("split_CompleteAnyObjective");
 			return true;
@@ -481,17 +761,17 @@ split
 			switch (actorFName)
 			{
 				case "BP_ConsoleKeypass_C":
-					uint keypassMax = memory.ReadValue<uint>((IntPtr)IntPtr.Add(actor, vars.CONSOLEKEYPASS_MAX));
-					uint keypassCurrent = memory.ReadValue<uint>((IntPtr)IntPtr.Add(actor, vars.CONSOLEKEYPASS_CURRENT));
+					uint keypassMax = memory.ReadValue<uint>((IntPtr)IntPtr.Add(actor, vars.offsets["BP_ConsoleKeypass_C"]["max"]));
+					uint keypassCurrent = memory.ReadValue<uint>((IntPtr)IntPtr.Add(actor, vars.offsets["BP_ConsoleKeypass_C"]["Current"]));
 					completed = (keypassCurrent >= keypassMax);
 					break;
 				case "BP_ReactorControl_Terminal_REFACT_C":
-					bool finished = memory.ReadValue<bool>((IntPtr)IntPtr.Add(actor, vars.REACTORCONTROLTERMINAL_FINISHED));
+					bool finished = memory.ReadValue<bool>((IntPtr)IntPtr.Add(actor, vars.offsets["BP_ReactorControl_Terminal_REFACT_C"]["Finished"]));
 					completed = finished;
 					break;
 				case "BP_GAZ_Control_Terminal_REFACT_C":
-					IntPtr puzzle = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(actor, vars.GAZCONTROLTERMINAL_PUZZLE));
-					bool purge = memory.ReadValue<bool>((IntPtr)IntPtr.Add(puzzle, vars.PUZZLE_PURGE));
+					IntPtr puzzle = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(actor, vars.offsets["BP_GAZ_Control_Terminal_REFACT_C"]["BP_Puzzle"]));
+					bool purge = memory.ReadValue<bool>((IntPtr)IntPtr.Add(puzzle, vars.offsets["BP_Laboratory_PuzzleContainer_C"]["Purge"]));
 					completed = purge;
 					break;
 				default:
@@ -511,15 +791,17 @@ split
 	{
 		IntPtr monster = vars.watchers["Monster"].Current;
 		byte monsterEnum = vars.watchers["MonsterEnum"].Current;
+		double health = memory.ReadValue<double>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_BaseMonster_C"]["Health"]));
+		double maxHealth = memory.ReadValue<double>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_BaseMonster_C"]["MaxHealth"]));
 
 		switch (monsterEnum)
 		{
 			default:
 				break;
 			case 2: // Octopus
-				bool eyeRightCut = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERPOULPI_EYERIGHTCUT));
-				bool eyeLeftCut = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERPOULPI_EYELEFTCUT));
-				bool breakHead = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERPOULPI_BREAKHEAD));
+				bool eyeRightCut = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Poulpi_C"]["EyeRightCut"]));
+				bool eyeLeftCut = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Poulpi_C"]["EyeLeftCut"]));
+				bool breakHead = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Poulpi_C"]["BreakHead"]));
 				if (settings["split_MonsterSpecific_Octopus_CutAnEye"])
 				{
 					int damageCount = 0;
@@ -535,8 +817,8 @@ split
 				}
 				break;
 			case 3: // Mike
-				bool headBreakLeft = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERMIKE_HEADBREAKLEFT));
-				bool headBreakRight = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTERMIKE_HEADBREAKRIGHT));
+				bool headBreakLeft = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Michel_C"]["HeadBreak Left"]));
+				bool headBreakRight = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Michel_C"]["HeadBreak Right"]));
 				if (settings["split_MonsterSpecific_Mike_BreakAFace"])
 				{
 					int damageCount = 0;
@@ -551,9 +833,9 @@ split
 				}
 				break;
 			case 4: // The Eye
-				bool haveShield = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTEREYE_HAVESHIELD));
-				bool dropOil = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTEREYE_DROPOIL));
-				bool breakGlass = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.MONSTEREYE_BREAKGLASS));
+				bool haveShield = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Eye_C"]["HaveShield"]));
+				bool dropOil = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Eye_C"]["DropOil"]));
+				bool breakGlass = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Eye_C"]["BreakGlass"]));
 				if (settings["split_MonsterSpecific_TheEye_LoseShield"])
 				{
 					if (vars.monsterPhase < 1 && !haveShield)
@@ -563,21 +845,21 @@ split
 						return true;
 					}
 				}
-				if (settings["split_MonsterSpecific_TheEye_StartDroppingOil"])
+				if (settings["split_MonsterSpecific_TheEye_BreakGlass"])
 				{
-					if (vars.monsterPhase < 2 && dropOil)
+					if (vars.monsterPhase < 2 && breakGlass)
 					{
 						vars.monsterPhase = 2;
-						print("split_MonsterSpecific_TheEye_StartDroppingOil");
+						print("split_MonsterSpecific_TheEye_BreakGlass");
 						return true;
 					}
 				}
-				if (settings["split_MonsterSpecific_TheEye_BreakGlass"])
+				if (settings["split_MonsterSpecific_TheEye_StartDroppingOil"])
 				{
-					if (vars.monsterPhase < 3 && breakGlass)
+					if (vars.monsterPhase < 3 && dropOil)
 					{
 						vars.monsterPhase = 3;
-						print("split_MonsterSpecific_TheEye_BreakGlass");
+						print("split_MonsterSpecific_TheEye_StartDroppingOil");
 						return true;
 					}
 				}
@@ -585,8 +867,6 @@ split
 			case 5: // Ghost
 				if (settings["split_MonsterSpecific_Ghost_LoseThirdOfHealth"])
 				{
-					double health = memory.ReadValue<double>((IntPtr)IntPtr.Add(monster, vars.BASEMONSTER_HEALTH));
-					double maxHealth = memory.ReadValue<double>((IntPtr)IntPtr.Add(monster, vars.BASEMONSTER_MAXHEALTH));
 					if (vars.monsterPhase < 1 && health <= maxHealth * (2d/3d))
 					{
 						vars.monsterPhase = 1;
@@ -604,8 +884,6 @@ split
 			case 6: // Puppet Master
 				if (settings["split_MonsterSpecific_PuppetMaster_LoseThirdOfHealth"])
 				{
-					double health = memory.ReadValue<double>((IntPtr)IntPtr.Add(monster, vars.BASEMONSTER_HEALTH));
-					double maxHealth = memory.ReadValue<double>((IntPtr)IntPtr.Add(monster, vars.BASEMONSTER_MAXHEALTH));
 					if (vars.monsterPhase < 1 && health <= maxHealth * (2d/3d))
 					{
 						vars.monsterPhase = 1;
@@ -623,11 +901,11 @@ split
 			case 7: // Peacekeeper
 				if (settings["split_MonsterSpecific_Peacekeeper_DestroyGatlingGun"])
 				{
-					IntPtr gatlingGun = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(monster, vars.MONSTERPEACEKEEPER_GATLING));
+					IntPtr gatlingGun = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_BigRobot_C"]["Gatling"]));
 					if (gatlingGun != IntPtr.Zero)
 					{
-						bool canFire = memory.ReadValue<bool>((IntPtr)IntPtr.Add(gatlingGun, vars.GATLING_CANFIRE));
-						double lifeValue = memory.ReadValue<double>((IntPtr)IntPtr.Add(gatlingGun, vars.GATLING_LIFEVALUE));
+						bool canFire = memory.ReadValue<bool>((IntPtr)IntPtr.Add(gatlingGun, vars.offsets["BP_Gatling_C"]["CanFire"]));
+						double lifeValue = memory.ReadValue<double>((IntPtr)IntPtr.Add(gatlingGun, vars.offsets["BP_Gatling_C"]["LifeValue"]));
 						if (vars.monsterPhase < 1 && !canFire && lifeValue > 0d)
 						{
 							vars.monsterPhase = 1;
@@ -638,8 +916,6 @@ split
 				}
 				if (settings["split_MonsterSpecific_Peacekeeper_LoseThirdOfHealth"])
 				{
-					double health = memory.ReadValue<double>((IntPtr)IntPtr.Add(monster, vars.BASEMONSTER_HEALTH));
-					double maxHealth = memory.ReadValue<double>((IntPtr)IntPtr.Add(monster, vars.BASEMONSTER_MAXHEALTH));
 					if (vars.monsterPhase < 2 && health <= maxHealth * (2d/3d))
 					{
 						vars.monsterPhase = 2;
