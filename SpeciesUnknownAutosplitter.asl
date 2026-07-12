@@ -280,8 +280,15 @@ init
 						List<string> propertiesFound = new List<string> {};
 						IntPtr currentProperty = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(thisObj, vars.offsets["UStruct"]["ChildProperties"]));
 
-						while (currentProperty != IntPtr.Zero)
+						int maxSearchableProperties = 1000;
+						for (int propertyCount = 1; currentProperty != IntPtr.Zero; propertyCount++)
 						{
+							if (propertyCount >= maxSearchableProperties)
+							{
+								print("WARNING: currentProperty in searchForOffsets_GObjects exceeded maxSearchableProperties for " + parent);
+								break;
+							}
+
 							IntPtr currentPropertyFName = IntPtr.Add(currentProperty, vars.offsets["FField"]["Name"]);
 							string currentPropertyNameStr = vars.FNameToString(currentPropertyFName);
 
@@ -363,8 +370,15 @@ init
 			List<string> propertiesFound = new List<string> {};
 			IntPtr currentProperty = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(classObj, vars.offsets["UStruct"]["ChildProperties"]));
 
-			while (currentProperty != IntPtr.Zero)
+			int maxSearchableProperties = 1000;
+			for (int propertyCount = 1; currentProperty != IntPtr.Zero; propertyCount++)
 			{
+				if (propertyCount >= maxSearchableProperties)
+				{
+					print("WARNING: currentProperty in searchForOffsets_Instance exceeded maxSearchableProperties for " + parent);
+					break;
+				}
+
 				IntPtr currentPropertyFName = IntPtr.Add(currentProperty, vars.offsets["FField"]["Name"]);
 				string currentPropertyNameStr = vars.FNameToString(currentPropertyFName);
 
