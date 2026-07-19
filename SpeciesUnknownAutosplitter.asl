@@ -440,26 +440,31 @@ init
 		return (IntPtr)location + offset + instructionOffset + 0x4;
 	});
 
-	// Returns a dictioonary of the current completed objectives. Has entries for FurthestIndex and Total.
+	// Returns a dictionary of the current completed objectives. Entries: MostCompleted, LeastCompleted, CountTotal.
 	vars.getPlayersObjectiveInfo = (Func<Dictionary<string, int>>)(() => {
 
 		IntPtr playerStateTArray = vars.watchers["PlayerStateArray"].Current;
 		int playerCount = vars.watchers["PlayerCount"].Current;
 		
-		int furthestObjectiveIndex = 0;
+		int mostObjectiveIndex = 0;
+		int leastObjectiveIndex = 255;
 		int totalObjectives = 0;
 		for (int index = 0; index < playerCount; index++)
 		{
 			IntPtr playerState = vars.getObjectOfTArrayByIndex(playerStateTArray, index);
+			bool playerDead = memory.ReadValue<bool>((IntPtr)IntPtr.Add(playerState, vars.offsets["BP_MyPlayerState_C"]["IsDead"]));
+			if (playerDead) continue;
 			int playerObjectivesComplete = memory.ReadValue<int>((IntPtr)IntPtr.Add(playerState, vars.offsets["BP_MyPlayerState_C"]["OldObjective"]));
-			if (playerObjectivesComplete > furthestObjectiveIndex) furthestObjectiveIndex = playerObjectivesComplete;
+			if (playerObjectivesComplete > mostObjectiveIndex) mostObjectiveIndex = playerObjectivesComplete;
+			if (playerObjectivesComplete < leastObjectiveIndex) leastObjectiveIndex = playerObjectivesComplete;
 			int playerObjectiveTotal = memory.ReadValue<int>((IntPtr)IntPtr.Add(playerState, vars.offsets["BP_MyPlayerState_C"]["ObjectiveList"] + 0x08));
 			if (playerObjectiveTotal > totalObjectives) totalObjectives = playerObjectiveTotal;
 		}
 
 		var retDict = new Dictionary<string, int> {
-			{"FurthestIndex", furthestObjectiveIndex},
-			{"Total", totalObjectives},
+			{"MostCompleted", mostObjectiveIndex},
+			{"LeastCompleted", leastObjectiveIndex},
+			{"CountTotal", totalObjectives},
 		};
 		return retDict;
 	});
@@ -671,6 +676,7 @@ init
 update
 {
 	vars.watchers.UpdateAll(game);
+
 	// Search for offsets when the player force looks at the ship screen.
 	if (vars.objectToString(vars.watchers["Player1_FocusedWidget"].Current) == "WBP_Main_ShipScreen_C" && vars.watchers["Player1_FocusedWidget"].Old == IntPtr.Zero)
 	{
@@ -725,10 +731,14 @@ update
 
 		vars.searchForOffsets_Instance(vars.watchers["Monster"].Current);
 
-		if (monsterString == "BP_BigRobot_C")
+		if (monsterString == "BP_BigRobot_C" && !vars.offsets.Keys.Contains("BP_Gatling_C"))
 		{
-			IntPtr gatlingInstance = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(monsterAddress, vars.offsets["BP_BigRobot_C"]["Gatling"]));
-			vars.searchForOffsets_Instance(gatlingInstance);
+			IntPtr gatlingInstance = IntPtr.Zero;
+			do // A safety since it takes a moment for the gatling to initialize.
+			{
+				gatlingInstance = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(monsterAddress, vars.offsets["BP_BigRobot_C"]["Gatling"]));
+				vars.searchForOffsets_Instance(gatlingInstance);
+			} while (gatlingInstance == IntPtr.Zero);
 		}
 
 		print("0x" + monsterAddress.ToString("X") + ": MONSTER\nMonster is " + monsterString + " (Enum " + vars.watchers["MonsterEnum"].Current.ToString() + ")");
@@ -814,34 +824,33 @@ split
 	// Updates for objectives.
 	Dictionary<string, int> objectiveInfo = vars.getPlayersObjectiveInfo();
 	bool anObjectiveWasDone = false;
-	if (objectiveInfo["FurthestIndex"] > vars.objectivesComplete)
+	if (objectiveInfo["MostCompleted"] > vars.objectivesComplete)
 	{
-		vars.objectivesComplete = objectiveInfo["FurthestIndex"];
 		anObjectiveWasDone = true;
-		print("Objectives Complete: " + objectiveInfo["FurthestIndex"] + "/" + objectiveInfo["Total"]);
+		vars.objectivesComplete = objectiveInfo["MostCompleted"];
+		print("Objectives Complete: " + objectiveInfo["MostCompleted"] + "/" + objectiveInfo["CountTotal"]);
 	}
 
-	if (settings["split_CompleteLastObjective"])
+	if (settings["split_CompleteLastObjective"] || settings["split_CompleteAnyObjective"])
 	{
-		bool lastObjectiveWasDone = (anObjectiveWasDone && vars.objectivesComplete == objectiveInfo["Total"]);
-		if (lastObjectiveWasDone)
+		string printStr = (settings["split_CompleteLastObjective"]) ? "split_CompleteLastObjective" : "split_CompleteAnyObjective";
+
+		bool lastObjectiveWasDoneByAll = (objectiveInfo["LeastCompleted"] == objectiveInfo["CountTotal"]);
+		if (lastObjectiveWasDoneByAll)
 		{
-			print("split_CompleteLastObjective");
 			vars.hasDoneFinalSplit = true;
+			print(printStr);
 			return true;
 		}
 		// For a failsafe that has occured to me a few times, everyone sitting down after the mission also counts for this split.
 		if (vars.areAllPlayersSitting())
 		{
 			vars.hasDoneFinalSplit = true;
-			print("split_CompleteLastObjective (areAllPlayersSitting)");
+			print(printStr + " (areAllPlayersSitting)");
 			return true;
 		}
-	}
 
-	if (settings["split_CompleteAnyObjective"])
-	{
-		if (anObjectiveWasDone)
+		if (settings["split_CompleteAnyObjective"] && anObjectiveWasDone && objectiveInfo["MostCompleted"] < objectiveInfo["CountTotal"])
 		{
 			print("split_CompleteAnyObjective");
 			return true;
