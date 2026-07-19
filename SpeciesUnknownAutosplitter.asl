@@ -68,14 +68,6 @@ startup
 	settings.Add("reset_GoToLobby", false, "Go To Lobby");
 	
 	settings.CurrentDefaultParent = null;
-	
-	/* Information settings.
-	settings.Add("info", false, "Information Settings");
-	
-	settings.CurrentDefaultParent = "info";
-	settings.Add("info_ShowMonsterComponent", false, "Show Monster Component");
-	
-	settings.CurrentDefaultParent = null;*/
 }
 
 init
@@ -125,7 +117,7 @@ init
 		}},
 	};
 
-	// Function declarations.
+	#region Functions
 
 	vars.FNameToString = (Func<IntPtr, string>)((FName_i) => {
 
@@ -161,14 +153,10 @@ init
 		return vars.FNameToString(FName);
 	});
 	
-	// Credit to Micrologist and Meta, this func was found in the Stray asl.
-	vars.GetStaticPointerFromSig = (Func<string, int, IntPtr>) ( (signature, instructionOffset) => {
-		var scanner = new SignatureScanner(game, modules.First().BaseAddress, (int)modules.First().ModuleMemorySize);
-		var pattern = new SigScanTarget(signature);
-		var location = scanner.Scan(pattern);
-		if (location == IntPtr.Zero) return IntPtr.Zero;
-		int offset = game.ReadValue<int>((IntPtr)location + instructionOffset);
-		return (IntPtr)location + offset + instructionOffset + 0x4;
+	vars.getObjectOfTArrayByIndex = (Func<IntPtr, int, IntPtr>)((TArray_i, index_i) => {
+
+		IntPtr TArrayObject = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(TArray_i, 0x08 * index_i));
+		return TArrayObject;
 	});
 
 	// Loop through a specific loaded level and find the actor's address. Returns the first instance of the actor.
@@ -180,9 +168,9 @@ init
 		IntPtr levelAddress = IntPtr.Zero;
 		string levelString = "";
 		
-		for (int k = 0; k < numOfLevels; k++)
+		for (int index = 0; index < numOfLevels; index++)
 		{
-			levelAddress = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelTArray, 8 * k));
+			levelAddress = vars.getObjectOfTArrayByIndex(levelTArray, index);
 			if (levelAddress == IntPtr.Zero) continue;
 			IntPtr outer = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelAddress, vars.offsets["UObject"]["Outer"]));
 			levelString = vars.objectToString(outer);
@@ -194,9 +182,9 @@ init
 		uint numOfActors = memory.ReadValue<uint>((IntPtr)IntPtr.Add(levelAddress, vars.offsets["ULevel"]["Actors"] + 0x08));
 		IntPtr actorTArray = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelAddress, vars.offsets["ULevel"]["Actors"]));
 
-		for (int k = 0; k < numOfActors; k++)
+		for (int index = 0; index < numOfActors; index++)
 		{
-			IntPtr actorAddress = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(actorTArray, 8 * k));
+			IntPtr actorAddress = vars.getObjectOfTArrayByIndex(actorTArray, index);
 			if (actorAddress == IntPtr.Zero) continue;
 			string actorString = vars.objectToString(actorAddress);
 			if (actorString == actorString_i) return actorAddress;
@@ -216,19 +204,17 @@ init
 
 		string message = "";
 		
-		for (int k = 0; k < numOfLevels; k++)
+		for (int index = 0; index < numOfLevels; index++)
 		{
-			IntPtr levelAddress = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelTArray, 0x08 * k));
+			IntPtr levelAddress = vars.getObjectOfTArrayByIndex(levelTArray, index);
 			if (levelAddress == IntPtr.Zero) continue;
 			IntPtr outer = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(levelAddress, vars.offsets["UObject"]["Outer"]));
 			string levelString = vars.objectToString(outer);
 
-			if (k != 0) message += "\n";
-
-			message += "Level " + k.ToString() + ":\n" + levelString;
+			message += "Level " + index.ToString() + ":\n" + levelString + "\n";
 		}
 
-		print(message);
+		print(message.Trim());
 		return true;
 	});
 
@@ -253,7 +239,9 @@ init
 		{
 			int maxInChunkIndex = (chunk != numChunks - 1) ? elementsPerChunk : numElements % elementsPerChunk;
 
-			IntPtr inChunkAddress = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(chunkArray, chunk * 0x08));
+			IntPtr inChunkAddress = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(chunkArray, 0x08 * chunk));
+
+			if (inChunkAddress == IntPtr.Zero) continue;
 
 			for (int inChunk = 0; inChunk < maxInChunkIndex; inChunk++)
 			{
@@ -283,7 +271,7 @@ init
 						int maxSearchableProperties = 1000;
 						for (int propertyCount = 1; currentProperty != IntPtr.Zero; propertyCount++)
 						{
-							if (propertyCount >= maxSearchableProperties)
+							if (propertyCount > maxSearchableProperties)
 							{
 								print("WARNING: currentProperty in searchForOffsets_GObjects exceeded maxSearchableProperties for " + parent);
 								break;
@@ -293,7 +281,7 @@ init
 							string currentPropertyNameStr = vars.FNameToString(currentPropertyFName);
 
 							// Search through the vars.offsetsToFind dictionary to see if the propertyNames of parent match any entry.
-							foreach(string child in vars.offsetsToFind[parent])
+							foreach (string child in vars.offsetsToFind[parent])
 							{
 								if (child.ToLower() != currentPropertyNameStr.ToLower()) continue;
 								
@@ -352,7 +340,7 @@ init
 		return true;
 	});
 
-	// Looks through the instance's class and finds property offsets according to vars.offsetsToFind.
+	// Looks through the instance's class and finds property offsets according to the offsetsToFind dictionary.
 	vars.searchForOffsets_Instance = (Func<IntPtr, bool>)((objectInstance_i) => {
 
 		if (objectInstance_i == IntPtr.Zero) return false;
@@ -385,7 +373,7 @@ init
 				if (currentPropertyNameStr == "None" || currentPropertyNameStr == "") break;
 
 				// Search through the vars.offsetsToFind dictionary to see if the propertyNames of parent match any entry.
-				foreach(string child in vars.offsetsToFind[parent])
+				foreach (string child in vars.offsetsToFind[parent])
 				{
 					if (child != currentPropertyNameStr) continue;
 
@@ -441,6 +429,71 @@ init
 
 		return false;
 	});
+	
+	// Credit to Micrologist and Meta, this func was found in the Stray asl.
+	vars.GetStaticPointerFromSig = (Func<string, int, IntPtr>) ( (signature, instructionOffset) => {
+		var scanner = new SignatureScanner(game, modules.First().BaseAddress, (int)modules.First().ModuleMemorySize);
+		var pattern = new SigScanTarget(signature);
+		var location = scanner.Scan(pattern);
+		if (location == IntPtr.Zero) return IntPtr.Zero;
+		int offset = game.ReadValue<int>((IntPtr)location + instructionOffset);
+		return (IntPtr)location + offset + instructionOffset + 0x4;
+	});
+
+	// Returns a dictioonary of the current completed objectives. Has entries for FurthestIndex and Total.
+	vars.getPlayersObjectiveInfo = (Func<Dictionary<string, int>>)(() => {
+
+		IntPtr playerStateTArray = vars.watchers["PlayerStateArray"].Current;
+		int playerCount = vars.watchers["PlayerCount"].Current;
+		
+		int furthestObjectiveIndex = 0;
+		int totalObjectives = 0;
+		for (int index = 0; index < playerCount; index++)
+		{
+			IntPtr playerState = vars.getObjectOfTArrayByIndex(playerStateTArray, index);
+			int playerObjectivesComplete = memory.ReadValue<int>((IntPtr)IntPtr.Add(playerState, vars.offsets["BP_MyPlayerState_C"]["OldObjective"]));
+			if (playerObjectivesComplete > furthestObjectiveIndex) furthestObjectiveIndex = playerObjectivesComplete;
+			int playerObjectiveTotal = memory.ReadValue<int>((IntPtr)IntPtr.Add(playerState, vars.offsets["BP_MyPlayerState_C"]["ObjectiveList"] + 0x08));
+			if (playerObjectiveTotal > totalObjectives) totalObjectives = playerObjectiveTotal;
+		}
+
+		var retDict = new Dictionary<string, int> {
+			{"FurthestIndex", furthestObjectiveIndex},
+			{"Total", totalObjectives},
+		};
+		return retDict;
+	});
+	
+	vars.areAllPlayersDead = (Func<bool>)(() => {
+
+		IntPtr playerStateTArray = vars.watchers["PlayerStateArray"].Current;
+		int playerCount = vars.watchers["PlayerCount"].Current;
+
+		for (int index = 0; index < playerCount; index++)
+		{
+			IntPtr playerState = vars.getObjectOfTArrayByIndex(playerStateTArray, index);
+			bool isDead = memory.ReadValue<bool>((IntPtr)IntPtr.Add(playerState, vars.offsets["BP_MyPlayerState_C"]["IsDead"]));
+			if (!isDead) return false;
+		}
+		return true;
+	});
+
+	vars.areAllPlayersSitting = (Func<bool>)(() => {
+
+		IntPtr playerTArray = vars.watchers["PlayerArray"].Current;
+		int playerCount = vars.watchers["PlayerCount"].Current;
+		
+		for (int index = 0; index < playerCount; index++)
+		{
+			IntPtr player = vars.getObjectOfTArrayByIndex(playerTArray, index);
+			bool isSitting = memory.ReadValue<bool>((IntPtr)IntPtr.Add(player, vars.offsets["BP_Character_C"]["IsSitting"]));
+			if (!isSitting) return false;
+		}
+		return true;
+	});
+
+	#endregion Functions
+	#region SigScanning
 
 	// Find UWorld via sigscan.
 
@@ -491,6 +544,8 @@ init
 
 	ulong GObjectsOffset = (ulong)((ulong)vars.GObjectsPointer - (ulong)modules.First().BaseAddress);
 
+	#endregion SigScanning
+
 	// Initialize certain variables.
 
 	// Used for in-contract actor accessing (ConsoleKeypass, ReactorControl Terminal, etc.)
@@ -502,6 +557,7 @@ init
 			"Health",
 		}},
 		{"BP_MyGameState_C", new List<string> {
+			"In Game Player State ",
 			"GameManager",
 			"ActualMonster",
 		}},
@@ -512,6 +568,7 @@ init
 		{"BP_MyPlayerState_C", new List<string> {
 			"ObjectiveList",
 			"OldObjective",
+			"IsDead",
 		}},
 		{"BP_Character_C", new List<string> {
 			"LastInteract Actor",
@@ -572,11 +629,11 @@ init
 
 		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer)) {Name = "UWorld" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Monster"])) {Name = "Monster" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<int>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["Pawn"]["PlayerState"], vars.offsets["BP_MyPlayerState_C"]["OldObjective"])) {Name = "ObjectivesDone" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<int>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["Pawn"]["PlayerState"], vars.offsets["BP_MyPlayerState_C"]["ObjectiveList"] + 0x08)) {Name = "TotalObjectiveCount" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"])) {Name = "PlayerArray" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["In Game Player State "])) {Name = "PlayerStateArray" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<int>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["In Game Player State "] + 0x08)) {Name = "PlayerCount" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["BP_Character_C"]["LastInteract Actor"])) {Name = "Player1_InteractingActor" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["Pawn"]["Controller"], vars.offsets["BP_MyPlayerController_C"]["In Widget to Focus"])) {Name = "Player1_FocusedWidget" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<bool>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["BP_Character_C"]["IsSitting"])) {Name = "Player1_IsSitting" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 		new MemoryWatcher<byte>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["ActualMonster"])) {Name = "MonsterEnum" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 
 	};
@@ -614,25 +671,30 @@ init
 update
 {
 	vars.watchers.UpdateAll(game);
-
-	// Check levels for important actors and add their addresses to the importantActors dictionary.
+	// Search for offsets when the player force looks at the ship screen.
+	if (vars.objectToString(vars.watchers["Player1_FocusedWidget"].Current) == "WBP_Main_ShipScreen_C" && vars.watchers["Player1_FocusedWidget"].Old == IntPtr.Zero)
+	{
+		vars.searchForOffsets_GObjects();
+	}
 
 	// Clear the importantActors if the world changes.
 	if (vars.watchers["UWorld"].Changed)
 	{
 		vars.importantActors.Clear();
-		vars.searchForOffsets_GObjects();
 	}
 
-	if (!vars.watchers["Player1_IsSitting"].Current && vars.watchers["Player1_IsSitting"].Old)
+	// Search for importantActors by level.
+	Dictionary<string, string> actorMapDict = new Dictionary<string, string> {
+		{"BP_LeverShip_C", "SpaceShip"},
+		{"BP_ConsoleKeypass_C", "SpaceShip"},
+		{"BP_ReactorControl_Terminal_REFACT_C", "Hawking_StaticMap_Enginery"},
+		{"BP_GAZ_Control_Terminal_REFACT_C", "Hawking_StaticMap_Laboratory"},
+	};
+	foreach (string actorName in actorMapDict.Keys)
 	{
-		vars.searchForOffsets_GObjects();
+		string mapName = actorMapDict[actorName];
+		vars.scanForActorIfNeeded(actorName, mapName);
 	}
-
-	vars.scanForActorIfNeeded("BP_LeverShip_C", "SpaceShip");
-	vars.scanForActorIfNeeded("BP_ConsoleKeypass_C", "SpaceShip");
-	vars.scanForActorIfNeeded("BP_ReactorControl_Terminal_REFACT_C", "Hawking_StaticMap_Enginery");
-	vars.scanForActorIfNeeded("BP_GAZ_Control_Terminal_REFACT_C", "Hawking_StaticMap_Laboratory");
 
 	// Create debug/coding tools.
 
@@ -645,7 +707,6 @@ update
 
 		print("0x" + objectAddress.ToString("X") + ": ACTOR\nPlayer interacted with actor " + objectString);
 	}
-	
 	if (vars.watchers["Player1_FocusedWidget"].Changed && vars.watchers["Player1_FocusedWidget"].Current != IntPtr.Zero)
 	{
 		// Widgets.
@@ -655,7 +716,6 @@ update
 
 		print("0x" + widgetAddress.ToString("X") + ": WIDGET\nPlayer interacted with widget " + widgetString);
 	}
-
 	if (vars.watchers["Monster"].Changed && vars.watchers["Monster"].Current != IntPtr.Zero)
 	{
 		// Monster.
@@ -728,6 +788,7 @@ onStart
 	vars.completedSectionGoals = new List<string>();
 	vars.monsterPhase = 0;
 	vars.objectivesComplete = 0;
+	vars.hasDoneFinalSplit = false;
 }
 
 reset
@@ -746,17 +807,41 @@ split
 {
 	if (vars.watchers["Monster"].Current == IntPtr.Zero) return false; // Disallows weird splitting mishaps in lobby and potentally other areas of the game.
 
-	if (vars.objectivesComplete < vars.watchers["ObjectivesDone"].Current)
-	{
-		vars.objectivesComplete = vars.watchers["ObjectivesDone"].Current;
+	if (vars.areAllPlayersDead()) return false; // Just a safety in case game does weird things with the game state once everyone is dead.
 
-		if (settings["split_CompleteLastObjective"] && vars.objectivesComplete == vars.watchers["TotalObjectiveCount"].Current)
+	if (vars.hasDoneFinalSplit) return false; // If hasDoneFinalSplit is true, we shouldn't need any more splits anyhow.
+
+	// Updates for objectives.
+	Dictionary<string, int> objectiveInfo = vars.getPlayersObjectiveInfo();
+	bool anObjectiveWasDone = false;
+	if (objectiveInfo["FurthestIndex"] > vars.objectivesComplete)
+	{
+		vars.objectivesComplete = objectiveInfo["FurthestIndex"];
+		anObjectiveWasDone = true;
+		print("Objectives Complete: " + objectiveInfo["FurthestIndex"] + "/" + objectiveInfo["Total"]);
+	}
+
+	if (settings["split_CompleteLastObjective"])
+	{
+		bool lastObjectiveWasDone = (anObjectiveWasDone && vars.objectivesComplete == objectiveInfo["Total"]);
+		if (lastObjectiveWasDone)
 		{
 			print("split_CompleteLastObjective");
+			vars.hasDoneFinalSplit = true;
 			return true;
 		}
+		// For a failsafe that has occured to me a few times, everyone sitting down after the mission also counts for this split.
+		if (vars.areAllPlayersSitting())
+		{
+			vars.hasDoneFinalSplit = true;
+			print("split_CompleteLastObjective (areAllPlayersSitting)");
+			return true;
+		}
+	}
 
-		if (settings["split_CompleteAnyObjective"])
+	if (settings["split_CompleteAnyObjective"])
+	{
+		if (anObjectiveWasDone)
 		{
 			print("split_CompleteAnyObjective");
 			return true;
