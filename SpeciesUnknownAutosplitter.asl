@@ -46,8 +46,8 @@ startup
 	
 	settings.CurrentDefaultParent = "split_MonsterSpecific_TheEye";
 	settings.Add("split_MonsterSpecific_TheEye_LoseShield", true, "Lose Shield");
-	settings.Add("split_MonsterSpecific_TheEye_StartDroppingOil", true, "Start Dropping Oil");
 	settings.Add("split_MonsterSpecific_TheEye_BreakGlass", true, "Break Glass");
+	settings.Add("split_MonsterSpecific_TheEye_StartDroppingOil", true, "Start Dropping Oil");
 	
 	settings.CurrentDefaultParent = "split_MonsterSpecific_Ghost";
 	settings.Add("split_MonsterSpecific_Ghost_LoseThirdOfHealth", true, "Lose Third of Health");
@@ -77,6 +77,7 @@ init
 		{"UWorld", new Dictionary<string, int> {
 			{"GameState", 0x1B0},
 			{"Levels", 0x1C8},
+			{"OwningGameInstance", 0x228},
 		}},
 		{"ULevel", new Dictionary<string, int> {
 			{"Actors", 0xA0},
@@ -86,6 +87,15 @@ init
 			{"Class", 0x10},
 			{"Name", 0x18},
 			{"Outer", 0x20},
+		}},
+		{"UGameInstance", new Dictionary<string, int> {
+			{"LocalPlayers", 0x38},
+		}},
+		{"UPlayer", new Dictionary<string, int> {
+			{"PlayerController", 0x30},
+		}},
+		{"AController", new Dictionary<string, int> {
+			{"Character", 0x300},
 		}},
 		{"FName", new Dictionary<string, int> {
 			{"ComparisonIndex", 0x00},
@@ -637,8 +647,8 @@ init
 		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"])) {Name = "PlayerArray" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["In Game Player State "])) {Name = "PlayerStateArray" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 		new MemoryWatcher<int>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["In Game Player State "] + 0x08)) {Name = "PlayerCount" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["BP_Character_C"]["LastInteract Actor"])) {Name = "Player1_InteractingActor" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
-		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["GameManager"], vars.offsets["BP_GameManager_C"]["Players"], 0x0, vars.offsets["Pawn"]["Controller"], vars.offsets["BP_MyPlayerController_C"]["In Widget to Focus"])) {Name = "Player1_FocusedWidget" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["OwningGameInstance"], vars.offsets["UGameInstance"]["LocalPlayers"], 0x0, vars.offsets["UPlayer"]["PlayerController"], vars.offsets["AController"]["Character"], vars.offsets["BP_Character_C"]["LastInteract Actor"])) {Name = "LocalPlayer_InteractingActor" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
+		new MemoryWatcher<IntPtr>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["OwningGameInstance"], vars.offsets["UGameInstance"]["LocalPlayers"], 0x0, vars.offsets["UPlayer"]["PlayerController"], vars.offsets["BP_MyPlayerController_C"]["In Widget to Focus"])) {Name = "LocalPlayer_FocusedWidget" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 		new MemoryWatcher<byte>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["ActualMonster"])) {Name = "MonsterEnum" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 
 	};
@@ -652,8 +662,8 @@ init
 	vars.dumpLevelNames();
 
 	IntPtr monsterAddress = vars.watchers["Monster"].Current;
-	IntPtr interactingActorAddress = vars.watchers["Player1_InteractingActor"].Current;
-	IntPtr interactingWidgetAddress = vars.watchers["Player1_FocusedWidget"].Current;
+	IntPtr interactingActorAddress = vars.watchers["LocalPlayer_InteractingActor"].Current;
+	IntPtr interactingWidgetAddress = vars.watchers["LocalPlayer_FocusedWidget"].Current;
 
 	string output = "";
 
@@ -678,7 +688,7 @@ update
 	vars.watchers.UpdateAll(game);
 
 	// Search for offsets when the player force looks at the ship screen.
-	if (vars.objectToString(vars.watchers["Player1_FocusedWidget"].Current) == "WBP_Main_ShipScreen_C" && vars.watchers["Player1_FocusedWidget"].Old == IntPtr.Zero)
+	if (vars.objectToString(vars.watchers["LocalPlayer_FocusedWidget"].Current) == "WBP_Main_ShipScreen_C" && vars.watchers["LocalPlayer_FocusedWidget"].Old == IntPtr.Zero)
 	{
 		vars.searchForOffsets_GObjects();
 	}
@@ -704,20 +714,20 @@ update
 
 	// Create debug/coding tools.
 
-	if (vars.watchers["Player1_InteractingActor"].Changed && vars.watchers["Player1_InteractingActor"].Current != IntPtr.Zero)
+	if (vars.watchers["LocalPlayer_InteractingActor"].Changed && vars.watchers["LocalPlayer_InteractingActor"].Current != IntPtr.Zero)
 	{
 		// Actors.
 
-		IntPtr objectAddress = vars.watchers["Player1_InteractingActor"].Current;
+		IntPtr objectAddress = vars.watchers["LocalPlayer_InteractingActor"].Current;
 		string objectString = vars.objectToString(objectAddress);
 
 		print("0x" + objectAddress.ToString("X") + ": ACTOR\nPlayer interacted with actor " + objectString);
 	}
-	if (vars.watchers["Player1_FocusedWidget"].Changed && vars.watchers["Player1_FocusedWidget"].Current != IntPtr.Zero)
+	if (vars.watchers["LocalPlayer_FocusedWidget"].Changed && vars.watchers["LocalPlayer_FocusedWidget"].Current != IntPtr.Zero)
 	{
 		// Widgets.
 
-		IntPtr widgetAddress = vars.watchers["Player1_FocusedWidget"].Current;
+		IntPtr widgetAddress = vars.watchers["LocalPlayer_FocusedWidget"].Current;
 		string widgetString = vars.objectToString(widgetAddress);
 
 		print("0x" + widgetAddress.ToString("X") + ": WIDGET\nPlayer interacted with widget " + widgetString);
@@ -731,7 +741,7 @@ update
 
 		vars.searchForOffsets_Instance(vars.watchers["Monster"].Current);
 
-		if (monsterString == "BP_BigRobot_C" && !vars.offsets.Keys.Contains("BP_Gatling_C"))
+		if (monsterString == "BP_BigRobot_C" && !vars.offsets.ContainsKey("BP_Gatling_C"))
 		{
 			IntPtr gatlingInstance = IntPtr.Zero;
 			do // A safety since it takes a moment for the gatling to initialize.
