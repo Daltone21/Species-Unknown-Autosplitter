@@ -935,8 +935,8 @@ split
 				}
 				break;
 			case 3: // Mike
-				bool headBreakLeft = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Michel_C"]["HeadBreak Left"]));
-				bool headBreakRight = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Michel_C"]["HeadBreak Right"]));
+				bool headBreakLeft = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Michel_C"]["HeadBreak_Left"]));
+				bool headBreakRight = memory.ReadValue<bool>((IntPtr)IntPtr.Add(monster, vars.offsets["BP_Monster_Michel_C"]["HeadBreak_Right"]));
 				if (settings["split_MonsterSpecific_Mike_BreakAFace"])
 				{
 					int damageCount = 0;
