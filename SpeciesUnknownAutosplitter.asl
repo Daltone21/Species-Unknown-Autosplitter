@@ -68,6 +68,14 @@ startup
 	settings.Add("reset_GoToLobby", false, "Go To Lobby");
 	
 	settings.CurrentDefaultParent = null;
+
+	// Info settings.
+	settings.Add("info", true, "Info Settings");
+	
+	settings.CurrentDefaultParent = "info";
+	settings.Add("info_MonsterType", true, "Monster Type");
+	
+	settings.CurrentDefaultParent = null;
 }
 
 init
@@ -507,6 +515,64 @@ init
 		return true;
 	});
 
+	// Checks for the monster TextComponent to still exist. If not, make one or find one to make it primary. Returns the monsterTextComponent.
+	vars.checkMonsterCheckComponent = (Func<dynamic>)(() => {
+
+		foreach (dynamic component in timer.Layout.Components)
+		{
+			string componentTypeStr = component.GetType().ToString();
+			if (componentTypeStr != "LiveSplit.UI.Components.TextComponent") continue;
+
+			if (component == vars.monsterTextComponent) return vars.monsterTextComponent;
+			
+			var textSettings = component.Settings;
+			string leftText = textSettings.Text1;
+
+			if (!leftText.Contains("Monster:")) continue;
+
+			print("Found existing Monster TextComponent! Making it the new primary Monster TextComponent...");
+			vars.monsterTextComponent = component;
+			return vars.monsterTextComponent;
+		}
+		print("Monster TextComponent not found, creating a new one...");
+
+		// Credit to Kuno Demetries and TheDementedSalad, this code was found in the Poppy Playtime: Chapter 2 asl.
+		var textComponentAssembly = Assembly.LoadFrom("Components\\LiveSplit.Text.dll");
+        var textComponent = Activator.CreateInstance(textComponentAssembly.GetType("LiveSplit.UI.Components.TextComponent"), timer);
+        timer.Layout.LayoutComponents.Add(new LiveSplit.UI.Components.LayoutComponent("LiveSplit.Text.dll", textComponent as LiveSplit.UI.Components.IComponent));
+
+		vars.monsterTextComponent = textComponent;
+		vars.monsterTextComponent.Settings.Text1 = "Monster:";
+		vars.writeToMonsterTextComponent(" ");
+		return vars.monsterTextComponent;
+	});
+
+	// Writes to the text2 field of the monsterTextComponent. Returns the monsterTextComponent.
+	vars.writeToMonsterTextComponent = (Func<string, dynamic>)((text_i) => {
+		vars.checkMonsterCheckComponent();
+		vars.monsterTextComponent.Settings.Text2 = text_i;
+		return vars.monsterTextComponent;
+	});
+
+	vars.getMonsterDisplayNameByEnum = (Func<byte, string>)((monsterEnum_i) => {
+		switch (monsterEnum_i) {
+			default:
+				return null;
+			case 2:
+				return "Octopus";
+			case 3:
+				return "Mike";
+			case 4:
+				return "The Eye";
+			case 5:
+				return "Ghost";
+			case 6:
+				return "Puppet Master";
+			case 7:
+				return "Peacekeeper";
+		}
+	});
+
 	#endregion Functions
 	#region SigScanning
 
@@ -652,10 +718,16 @@ init
 		new MemoryWatcher<byte>(new DeepPointer(vars.UWorldPointer, vars.offsets["UWorld"]["GameState"], vars.offsets["BP_MyGameState_C"]["ActualMonster"])) {Name = "MonsterEnum" , FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull},
 
 	};
-
-	// Print the game information.
-
 	vars.watchers.UpdateAll(game);
+	
+	// Initialize monster TextComponent.
+	vars.monsterTextComponent = null;
+	if (settings["info_MonsterType"])
+	{
+		vars.checkMonsterCheckComponent();
+	}
+	
+	// Print the game information.
 
 	print("UWorldOffset:\n0x" + UWorldOffset.ToString("X") + "\nFNamePoolOffset:\n0x" + FNamePoolOffset.ToString("X") + "\nGObjectsOffset:\n0x" + GObjectsOffset.ToString("X"));
 
@@ -711,8 +783,42 @@ update
 		string mapName = actorMapDict[actorName];
 		vars.scanForActorIfNeeded(actorName, mapName);
 	}
+	
+	// Update information settings.
+	if (settings["info_MonsterType"])
+	{
+		// Monster TextComponent.
 
-	// Create debug/coding tools.
+		byte monsterEnum = vars.watchers["MonsterEnum"].Current;
+		string monsterName = vars.getMonsterDisplayNameByEnum(monsterEnum);
+		if (monsterName == null) monsterName = " ";
+
+		vars.writeToMonsterTextComponent(monsterName);
+	}
+	
+	// Search for the corresponding monster's offsets if they haven't been found yet.
+	if (vars.watchers["Monster"].Changed && vars.watchers["Monster"].Current != IntPtr.Zero)
+	{
+		// Monster.
+
+		IntPtr monsterAddress = vars.watchers["Monster"].Current;
+		string monsterString = vars.objectToString(monsterAddress);
+
+		vars.searchForOffsets_Instance(vars.watchers["Monster"].Current);
+
+		// PeaceKeeper's gatling gun takes a moment to initialize, so we need to wait for it to be initialized before we can search for its offsets.
+		if (monsterString == "BP_BigRobot_C" && !vars.offsets.ContainsKey("BP_Gatling_C"))
+		{
+			IntPtr gatlingInstance = IntPtr.Zero;
+			do // A safety since it takes a moment for the gatling to initialize.
+			{
+				gatlingInstance = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(monsterAddress, vars.offsets["BP_BigRobot_C"]["Gatling"]));
+				vars.searchForOffsets_Instance(gatlingInstance);
+			} while (gatlingInstance == IntPtr.Zero);
+		}
+	}
+
+	// Create debugging/coding tools.
 
 	if (vars.watchers["LocalPlayer_InteractingActor"].Changed && vars.watchers["LocalPlayer_InteractingActor"].Current != IntPtr.Zero)
 	{
@@ -739,49 +845,8 @@ update
 		IntPtr monsterAddress = vars.watchers["Monster"].Current;
 		string monsterString = vars.objectToString(monsterAddress);
 
-		vars.searchForOffsets_Instance(vars.watchers["Monster"].Current);
-
-		if (monsterString == "BP_BigRobot_C" && !vars.offsets.ContainsKey("BP_Gatling_C"))
-		{
-			IntPtr gatlingInstance = IntPtr.Zero;
-			do // A safety since it takes a moment for the gatling to initialize.
-			{
-				gatlingInstance = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(monsterAddress, vars.offsets["BP_BigRobot_C"]["Gatling"]));
-				vars.searchForOffsets_Instance(gatlingInstance);
-			} while (gatlingInstance == IntPtr.Zero);
-		}
-
 		print("0x" + monsterAddress.ToString("X") + ": MONSTER\nMonster is " + monsterString + " (Enum " + vars.watchers["MonsterEnum"].Current.ToString() + ")");
 	}
-	
-	/*
-	if (vars.watchers["MonsterEnum"].Changed && vars.watchers["MonsterEnum"].Current != IntPtr.Zero)
-	{
-		// Monster component.
-
-		byte monsterEnum = vars.watchers["MonsterEnum"].Current;
-
-		string monsterName = ((Func<string>)(() => {
-			switch (monsterEnum) {
-				default:
-					return "";
-				case 2:
-					return "Octopus";
-				case 3:
-					return "Mike";
-				case 4:
-					return "The Eye";
-				case 5:
-					return "Ghost";
-				case 6:
-					return "Puppet Master";
-				case 7:
-					return "Peacekeeper";
-			}
-		}))();
-
-	}
-	*/
 
 }
 
