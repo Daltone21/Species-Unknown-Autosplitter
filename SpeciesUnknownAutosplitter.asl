@@ -6,7 +6,7 @@
 	By daltone_21 on Discord.
 
 	Todo:
-		- Add information component support for monster on beginning a mission.
+	
 */
 
 state("SpeciesUnknown-Win64-Shipping") {}
