@@ -440,7 +440,7 @@ init
 			if (actor != IntPtr.Zero)
 			{
 				vars.importantActors[actorName_i] = actor;
-				print("Scanned for and found:\n" + actorName_i + " at 0x" + actor.ToString("X") + " in " + levelName_i);
+				print("Scanned for and found an instance of:\n" + actorName_i + " at 0x" + actor.ToString("X") + " in " + levelName_i);
 				return true;
 			}
 		}
@@ -771,19 +771,56 @@ update
 		vars.importantActors.Clear();
 	}
 
-	// Search for importantActors by level.
-	Dictionary<string, string> actorMapDict = new Dictionary<string, string> {
-		{"BP_LeverShip_C", "SpaceShip"},
-		{"BP_ConsoleKeypass_C", "SpaceShip"},
-		{"BP_ReactorControl_Terminal_REFACT_C", "Hawking_StaticMap_Enginery"},
-		{"BP_GAZ_Control_Terminal_REFACT_C", "Hawking_StaticMap_Laboratory"},
-	};
+	// Search for importantActors by level. This uses a lambda function bc why not.
+	Dictionary<string, string> actorMapDict = ((Func<Dictionary<string, string>>)(() => {
+		IntPtr levelTArrayAddress = (IntPtr)IntPtr.Add(vars.watchers["UWorld"].Current, vars.offsets["UWorld"]["Levels"]);
+		IntPtr levelTArray = memory.ReadValue<IntPtr>(levelTArrayAddress);
+
+		int levelIndex = 0;
+		IntPtr firstLevelAddress = vars.getObjectOfTArrayByIndex(levelTArray, levelIndex);
+
+		IntPtr outer = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(firstLevelAddress, vars.offsets["UObject"]["Outer"]));
+		string levelString = vars.objectToString(outer);
+		switch (levelString)
+		{
+			case "SpaceShip":
+				return new Dictionary<string, string> {
+					//{"BP_LeverShip_C", "SpaceShip"},
+					{"BP_ConsoleKeypass_C", "SpaceShip"},
+					{"BP_ReactorControl_Terminal_REFACT_C", "Hawking_StaticMap_Enginery"},
+					{"BP_GAZ_Control_Terminal_REFACT_C", "Hawking_StaticMap_Laboratory"},
+				};
+			case "PolarMap":
+				return new Dictionary<string, string> {
+					/*
+Level 0:
+PolarMap
+Level 1:
+POLAR_Navigation
+Level 2:
+POLAR_DummyMap
+Level 3:
+POLAR_StaticMap_Workshop
+Level 4:
+POLAR_StaticMap_Colony
+Level 5:
+POLAR_Garbage
+Level 6:
+POLAR_StaticMap_Electrical 
+					*/
+					//{"BP_LeverShip_C", "PolarMap"},
+					{"BP_CargoMaintenance_Terminal_C", "POLAR_StaticMap_Colony"},
+				};
+			default:
+				return new Dictionary<string, string> {};
+		}
+	}))();
 	foreach (string actorName in actorMapDict.Keys)
 	{
 		string mapName = actorMapDict[actorName];
 		vars.scanForActorIfNeeded(actorName, mapName);
 	}
-	
+
 	// Update information settings.
 	if (settings["info_MonsterType"])
 	{
@@ -854,6 +891,21 @@ start
 {
 	if (settings["start_OpenShipDoor"])
 	{
+		// Check if any players are interacting with a BP_LeverShip_C.
+		IntPtr playerTArray = vars.watchers["PlayerArray"].Current;
+		int playerCount = vars.watchers["PlayerCount"].Current;
+		
+		for (int index = 0; index < playerCount; index++)
+		{
+			IntPtr player = vars.getObjectOfTArrayByIndex(playerTArray, index);
+			IntPtr lastInteractActor = memory.ReadValue<IntPtr>((IntPtr)IntPtr.Add(player, vars.offsets["BP_Character_C"]["LastInteract Actor"]));
+			string lastInteractActorStr = vars.objectToString(lastInteractActor);
+			if (lastInteractActorStr != "BP_LeverShip_C") continue;
+			print("start_OpenShipDoor");
+			return true;
+		}
+
+/*
 		if (vars.importantActors.ContainsKey("BP_LeverShip_C"))
 		{
 			bool isUsed = memory.ReadValue<bool>((IntPtr)IntPtr.Add(vars.importantActors["BP_LeverShip_C"], vars.offsets["BP_LeverShip_C"]["IsUsed"]));
@@ -864,6 +916,7 @@ start
 				return true;
 			}
 		}
+*/
 	}
 }
 
